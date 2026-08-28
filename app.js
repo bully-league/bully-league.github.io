@@ -318,6 +318,36 @@ function txRow(tx) {
   return row;
 }
 
+/* One finished game as a compact history line: winner bold with the red tick. */
+function historyRow(g) {
+  const r = el("div", "hist-row");
+  if (g.kind === "played") {
+    const away = team(g.awayTeamId), home = team(g.homeTeamId);
+    const awayWon = g.awayScore > g.homeScore, homeWon = g.homeScore > g.awayScore;
+    const side = (t, score, won) => {
+      const s = el("div", "hist-side" + (won ? " won" : ""));
+      s.appendChild(logoImg(t.abbr, "hist-logo"));
+      s.appendChild(el("span", "hist-abbr", t.abbr));
+      s.appendChild(el("span", "hist-score", String(score)));
+      return s;
+    };
+    r.appendChild(side(away, g.awayScore, awayWon));
+    r.appendChild(el("span", "hist-at", "@"));
+    r.appendChild(side(home, g.homeScore, homeWon));
+  } else if (g.kind === "forceWin") {
+    const w = team(g.winnerTeamId), l = team(g.loserTeamId);
+    r.appendChild(logoImg(w.abbr, "hist-logo"));
+    r.appendChild(el("span", "hist-text", `${w.abbr} def. ${l.abbr}`));
+    r.appendChild(el("span", "chip forced", "Force Win"));
+  } else {
+    const a = team(g.awayTeamId), h = team(g.homeTeamId);
+    r.appendChild(logoImg(a.abbr, "hist-logo"));
+    r.appendChild(el("span", "hist-text", `${a.abbr} @ ${h.abbr}`));
+    r.appendChild(el("span", "chip fairsim", "Fair Sim"));
+  }
+  return r;
+}
+
 function renderHome(view) {
   const games = (DATA.week.games || []).slice();
   const gotw = games.filter((g) => g.isGotw);
@@ -331,11 +361,35 @@ function renderHome(view) {
 
   if (gotw.length) main.appendChild(heroCard(gotw[0]));
 
-  main.appendChild(sectionHead("Scoreboard", `${games.length} games`));
-  if (!games.length) main.appendChild(el("div", "empty", "No games on the schedule yet — check back after the next sync."));
-  const grid = el("div", "grid games-grid");
-  for (const g of [...gotw.slice(1), ...rest]) grid.appendChild(gameCard(g));
-  main.appendChild(grid);
+  const pastWeeks = (DATA.history || []).filter((w) => w.label !== DATA.week.label);
+  main.appendChild(sectionHead("Scoreboard", scoreWeek ? "" : `${games.length} games`));
+  if (pastWeeks.length) {
+    const pills = el("div", "week-pills");
+    for (const w of pastWeeks) {
+      const key = `${w.stage}-${w.week}`;
+      const pill = el("button", "week-pill" + (scoreWeek === key ? " active" : ""), w.label.replace("Preseason ", "P"));
+      pill.type = "button";
+      pill.addEventListener("click", () => { scoreWeek = scoreWeek === key ? null : key; render(); });
+      pills.appendChild(pill);
+    }
+    const now = el("button", "week-pill" + (scoreWeek === null ? " active" : ""), "This Week");
+    now.type = "button";
+    now.addEventListener("click", () => { scoreWeek = null; render(); });
+    pills.appendChild(now);
+    main.appendChild(pills);
+  }
+  if (scoreWeek) {
+    const w = pastWeeks.find((x) => `${x.stage}-${x.week}` === scoreWeek);
+    const card = el("div", "card");
+    for (const g of w ? w.games : []) card.appendChild(historyRow(g));
+    if (!w || !w.games.length) card.appendChild(el("div", "empty", "No recorded results for that week."));
+    main.appendChild(card);
+  } else {
+    if (!games.length) main.appendChild(el("div", "empty", "No games on the schedule yet — check back after the next sync."));
+    const grid = el("div", "grid games-grid");
+    for (const g of [...gotw.slice(1), ...rest]) grid.appendChild(gameCard(g));
+    main.appendChild(grid);
+  }
 
   if ((DATA.news || []).length) {
     rail.appendChild(sectionHead("Top Headlines", ""));
@@ -856,6 +910,37 @@ function renderTeam(view, teamId) {
   exports.appendChild(allBtn);
   view.appendChild(exports);
 
+  // Season results — this team's game log from the recorded history
+  const log = [];
+  for (const w of DATA.history || []) {
+    for (const g of w.games) {
+      if (g.kind === "played" && (g.awayTeamId === teamId || g.homeTeamId === teamId)) {
+        const home = g.homeTeamId === teamId;
+        const oppId = home ? g.awayTeamId : g.homeTeamId;
+        const my = home ? g.homeScore : g.awayScore, their = home ? g.awayScore : g.homeScore;
+        log.push({ label: w.label, opp: team(oppId), home, result: my > their ? "W" : my < their ? "L" : "T", score: `${my}-${their}` });
+      } else if (g.kind === "forceWin" && (g.winnerTeamId === teamId || g.loserTeamId === teamId)) {
+        log.push({ label: w.label, opp: team(g.winnerTeamId === teamId ? g.loserTeamId : g.winnerTeamId), home: null, result: g.winnerTeamId === teamId ? "W" : "L", score: "Force Win" });
+      } else if (g.kind === "fairSim" && (g.awayTeamId === teamId || g.homeTeamId === teamId)) {
+        log.push({ label: w.label, opp: team(g.awayTeamId === teamId ? g.homeTeamId : g.awayTeamId), home: g.homeTeamId === teamId, result: "—", score: "Fair Sim" });
+      }
+    }
+  }
+  if (log.length) {
+    view.appendChild(sectionHead("Season Results", log.length + " games"));
+    const logCard = el("div", "card");
+    for (const row of log) {
+      const r = el("div", "gamelog-row");
+      r.appendChild(el("span", "gamelog-week", row.label.replace("Preseason ", "P").replace("Week ", "W")));
+      r.appendChild(el("span", "wl-badge wl-" + row.result.toLowerCase().replace("—", "t"), row.result));
+      r.appendChild(logoImg(row.opp.abbr, "hist-logo"));
+      r.appendChild(el("span", "gamelog-opp", (row.home === null ? "" : row.home ? "vs " : "@ ") + row.opp.nick));
+      r.appendChild(el("span", "gamelog-score", row.score));
+      logCard.appendChild(r);
+    }
+    view.appendChild(logCard);
+  }
+
   // Sortable roster table
   view.appendChild(sectionHead("Roster", roster.length + " players"));
   if (!roster.length) { view.appendChild(el("div", "empty", "No roster data — appears after the next sync.")); return; }
@@ -920,6 +1005,7 @@ let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
 const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
+let scoreWeek = null; // "stage-week" key of a past week being browsed on Home, null = current week
 
 function openTeam(teamId) {
   viewTeamId = teamId;
