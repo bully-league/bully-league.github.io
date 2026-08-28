@@ -1,48 +1,39 @@
-/* Service worker: cache-first for the app shell (bump SHELL_VERSION on shell
-   changes — the publisher redeploys this file, and a changed version string
-   triggers the update cycle), network-first for site.json so the app always
-   shows fresh league data when online and last-synced data when not. */
+/* Service worker: NETWORK-FIRST for everything same-origin, cache as the
+   offline fallback only. The shell is ~30 KB on a fast CDN — always fetching
+   fresh means every deploy is visible on the very next open, no double-refresh
+   ritual. (v7 and earlier were cache-first, which showed the previous version
+   on every load and could even refill the cache from the browser's HTTP cache;
+   that's the bug this version retires.) `cache: "no-cache"` on every fetch
+   forces revalidation past GitHub Pages' 10-minute HTTP cache too. */
 
-const SHELL_VERSION = "fo-shell-v7";
-const SHELL_ASSETS = [
-  "./",
-  "index.html",
-  "styles.css",
-  "app.js",
-  "manifest.webmanifest",
-  "icons/icon-192.png",
-  "icons/icon-512.png",
-  "icons/icon-maskable-512.png",
-];
+const CACHE_NAME = "fo-shell-v8";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(SHELL_VERSION).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()));
+  // No precache list to go stale — the cache fills organically from real visits.
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== SHELL_VERSION).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.origin !== location.origin) return; // logos/portraits: let the browser handle CDN caching
+  if (event.request.method !== "GET" || url.origin !== location.origin) return;
 
-  if (url.pathname.endsWith("site.json")) {
-    event.respondWith(
-      fetch(event.request)
-        .then((res) => {
+  event.respondWith(
+    fetch(new Request(event.request, { cache: "no-cache" }))
+      .then((res) => {
+        if (res.ok) {
           const copy = res.clone();
-          caches.open(SHELL_VERSION).then((cache) => cache.put(event.request, copy));
-          return res;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  event.respondWith(caches.match(event.request).then((hit) => hit || fetch(event.request)));
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(event.request).then((hit) => hit || caches.match("index.html")))
+  );
 });
