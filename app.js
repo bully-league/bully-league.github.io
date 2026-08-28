@@ -453,9 +453,22 @@ function personaColor(handle) {
 function newsCard(post) {
   const card = el("div", "card post");
   const head = el("div", "post-head");
-  const av = el("div", "post-avatar");
-  av.style.background = personaColor(post.handle);
-  av.textContent = post.name.split(" ").map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+  const initialsAv = () => {
+    const d = el("div", "post-avatar");
+    d.style.background = personaColor(post.handle);
+    d.textContent = post.name.split(" ").map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+    return d;
+  };
+  let av;
+  if (post.avatarUrl) {
+    av = el("img", "post-avatar");
+    av.src = post.avatarUrl;
+    av.alt = post.name;
+    av.loading = "lazy";
+    av.onerror = () => av.replaceWith(initialsAv());
+  } else {
+    av = initialsAv();
+  }
   head.appendChild(av);
   const who = el("div", "post-who");
   const nameLine = el("div", "post-name", post.name);
@@ -475,7 +488,7 @@ function renderNews(view) {
   const feed = el("div", "grid feed");
   for (const post of posts) feed.appendChild(newsCard(post));
   view.appendChild(feed);
-  view.appendChild(el("div", "news-disclaimer", "League insiders are AI personalities generated from this league's real synced data. Not real reporters, not real reporting."));
+  view.appendChild(el("div", "news-disclaimer", "League insiders are AI-generated parody personalities built from this league's real synced data. Not real people posting, not real reporting."));
 }
 
 /* ---------- Trade builder ----------
