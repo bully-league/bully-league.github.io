@@ -3,7 +3,7 @@
    triggers the update cycle), network-first for site.json so the app always
    shows fresh league data when online and last-synced data when not. */
 
-const SHELL_VERSION = "fo-shell-v4";
+const SHELL_VERSION = "fo-shell-v5";
 const SHELL_ASSETS = [
   "./",
   "index.html",

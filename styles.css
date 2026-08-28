@@ -399,6 +399,8 @@ a.card:active { background: var(--surface-2); }
   cursor: pointer;
 }
 .trade-cta:disabled { background: var(--surface); color: var(--text-faint); cursor: default; border: 1px solid var(--edge); }
+.trade-cta + .trade-cta, .trade-cta-secondary { margin-top: 8px; }
+.trade-cta-secondary { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--edge); }
 .trade-code-box {
   margin-top: 10px;
   background: var(--bg); border: 1px solid var(--edge); border-radius: 8px;

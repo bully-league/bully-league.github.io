@@ -583,7 +583,76 @@ function renderTrade(view) {
   const verdict = !hasAssets ? "Add players or picks to either side." : pct < 10 ? `Roughly even (within ${pct.toFixed(0)}%).` : `Favors ${totalA > totalB ? team(TRADE.b).nick : team(TRADE.a).nick} by ~${pct.toFixed(0)}%.`;
   summary.appendChild(el("div", "fairness", verdict));
 
-  const cta = el("button", "trade-cta", TRADE.code ? "Copy Again" : "Get Trade Code");
+  // Direct submission (when the league has the Worker set up) is the primary CTA;
+  // the copy-a-code flow stays as the always-available fallback underneath.
+  const directAvailable = Boolean(DATA.submitUrl);
+  let siteKey = null;
+  try { siteKey = localStorage.getItem("site-key"); } catch {}
+
+  if (directAvailable && !siteKey) {
+    const keyRow = el("div");
+    const keyInput = el("input", "roster-search");
+    keyInput.type = "password";
+    keyInput.placeholder = "Paste your key from /site-key (one time)";
+    keyInput.autocomplete = "off";
+    const keyHint = el("div", "trade-code-hint");
+    keyHint.append("To submit straight to Discord, run ");
+    keyHint.appendChild(el("code", null, "/site-key"));
+    keyHint.append(" there once, paste the key it DMs you here — this phone remembers it.");
+    keyInput.addEventListener("change", () => {
+      const v = keyInput.value.trim();
+      if (v.startsWith("FOK1.")) {
+        try { localStorage.setItem("site-key", v); } catch {}
+        render();
+      }
+    });
+    keyRow.appendChild(keyInput);
+    keyRow.appendChild(keyHint);
+    summary.appendChild(keyRow);
+  }
+
+  if (directAvailable && siteKey) {
+    const submitBtn = el("button", "trade-cta", "Submit to League");
+    submitBtn.type = "button";
+    submitBtn.disabled = !hasAssets;
+    const status = el("div", "trade-code-hint");
+    submitBtn.addEventListener("click", async () => {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting…";
+      status.textContent = "";
+      try {
+        const res = await fetch(DATA.submitUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: siteKey, code: buildTradeCode() }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (res.ok && out.ok) {
+          submitBtn.textContent = "Submitted ✓";
+          submitBtn.classList.add("copied-flash");
+          status.textContent = "Sent to the league — the trade card is posting to Discord now. If something's off with it, the bot will DM you why.";
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit to League";
+          if (res.status === 403) {
+            try { localStorage.removeItem("site-key"); } catch {}
+            status.textContent = "Your key was rejected — run /site-key in Discord for a fresh one, then paste it here again.";
+            setTimeout(render, 2500);
+          } else {
+            status.textContent = (out.error || "Couldn't submit right now.") + " You can still use the trade code below.";
+          }
+        }
+      } catch {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit to League";
+        status.textContent = "Couldn't reach the league server — check your connection, or use the trade code below.";
+      }
+    });
+    summary.appendChild(submitBtn);
+    summary.appendChild(status);
+  }
+
+  const cta = el("button", "trade-cta" + (directAvailable && siteKey ? " trade-cta-secondary" : ""), TRADE.code ? "Copy Again" : "Get Trade Code");
   cta.type = "button";
   cta.disabled = !hasAssets;
   cta.addEventListener("click", async () => {
