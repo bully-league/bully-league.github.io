@@ -61,46 +61,55 @@ body::before {
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-  background: linear-gradient(160deg, #e6141b 0%, var(--red) 55%, #9c0408 100%);
-  border-bottom: 1px solid #7d0306;
+  padding: 0 16px 0 0;
+  background: #17181a;
+  border-bottom: 1px solid #000;
+}
+/* The ESPN signature: the brand lives in a RED block cut off at a hard diagonal
+   slash, sitting on a black bar — not a full-width red banner. The light sweep
+   runs inside the red block only, where it actually reads. */
+.wordmark {
+  position: relative;
+  display: flex; flex-direction: column; justify-content: center;
+  line-height: 1;
+  padding: calc(12px + env(safe-area-inset-top)) 38px 11px 16px;
+  background: linear-gradient(160deg, #e6141b 0%, var(--red) 60%, #a50408 100%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
   overflow: hidden;
 }
-/* Broadcast-graphics light sweep across the masthead — fires briefly, rests
-   most of the cycle, like a network bug rather than a strobing banner. */
-.topbar::after {
+.wordmark::after {
   content: "";
   position: absolute; inset: 0;
   pointer-events: none;
-  background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.16) 50%, transparent 58%);
-  transform: translateX(-130%) skewX(-8deg);
-  animation: masthead-sheen 9s ease-in-out infinite;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%);
+  transform: translateX(-130%);
+  animation: masthead-sheen 6s ease-in-out infinite;
 }
 @keyframes masthead-sheen {
-  0%, 62% { transform: translateX(-130%) skewX(-8deg); }
-  82%, 100% { transform: translateX(130%) skewX(-8deg); }
+  0%, 55% { transform: translateX(-130%); }
+  75%, 100% { transform: translateX(130%); }
 }
-.wordmark { display: flex; flex-direction: column; line-height: 1; transform: skewX(-8deg); }
 .wordmark-the {
-  font-family: "Archivo", sans-serif;
-  font-size: 10px; font-weight: 800; letter-spacing: .34em;
-  color: rgba(255,255,255,.85);
+  font-family: "Archivo", sans-serif; font-style: italic;
+  font-size: 10px; font-weight: 800; letter-spacing: .32em;
+  color: rgba(255,255,255,.88);
 }
 .wordmark-main {
   font-family: "Archivo", sans-serif; font-style: italic;
-  font-size: 21px; font-weight: 900; font-stretch: 72%;
+  font-size: 22px; font-weight: 900; font-stretch: 72%;
   letter-spacing: .01em; margin-top: 2px;
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 .week-chip {
-  font-family: "Archivo", sans-serif;
+  font-family: "Archivo", sans-serif; font-style: italic;
   font-size: 12px; font-weight: 800; font-stretch: 85%;
   letter-spacing: .08em; text-transform: uppercase;
   color: #fff;
-  border: 1px solid rgba(255,255,255,.45); border-radius: 999px;
-  padding: 6px 12px;
-  background: rgba(0,0,0,.18);
+  border: 0; border-left: 3px solid var(--red-bright);
+  padding: 5px 2px 5px 10px;
+  background: none;
+  margin-top: env(safe-area-inset-top);
 }
 
 /* ---------- iOS install hint ---------- */
@@ -226,6 +235,31 @@ a.card:active { background: var(--surface-2); }
   letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
 }
 .gotw-eyebrow svg { width: 13px; height: 13px; fill: var(--gold); }
+
+/* Broadcast matchup billboard: the two teams' colors meet at a diagonal seam,
+   big logos squared off against each other — the graphic a pregame show would
+   put up. Colors arrive inline from app.js (--bb-away / --bb-home). */
+.gotw-billboard {
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 10px 14px 2px 18px;
+  padding: 16px 26px;
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(10,11,12,.34), rgba(10,11,12,.34)),
+    linear-gradient(105deg, var(--bb-away, #333) 0%, var(--bb-away, #333) 45%, #101112 50%, var(--bb-home, #333) 55%, var(--bb-home, #333) 100%);
+  overflow: hidden;
+}
+.gotw-billboard img {
+  width: 62px; height: 62px;
+  filter: drop-shadow(0 5px 12px rgba(0,0,0,.55));
+}
+.gotw-vs {
+  font-family: "Archivo", sans-serif; font-style: italic;
+  font-weight: 900; font-stretch: 72%; font-size: 24px;
+  color: #fff; letter-spacing: .04em;
+  text-shadow: 0 2px 8px rgba(0,0,0,.6);
+}
 
 /* ---------- Standings ---------- */
 .division-block { margin-bottom: 4px; }
@@ -545,13 +579,13 @@ a.card:active { background: var(--surface-2); }
   }
   .tab {
     flex: none; flex-direction: row; gap: 7px;
-    font-size: 13px; padding: 8px 16px;
-    border-radius: 999px;
+    font-size: 13px; padding: 10px 16px 12px;
+    border-radius: 0;
   }
   .tab svg { width: 16px; height: 16px; }
-  .tab.active { background: var(--surface-2); }
+  .tab.active { background: none; color: #fff; box-shadow: inset 0 -3px 0 var(--red-bright); }
   .tab:hover { color: var(--text-dim); }
-  .tab.active:hover { color: var(--gold); }
+  .tab.active:hover { color: #fff; }
   .view { order: 3; width: 100%; max-width: 1060px; padding: 22px 28px 40px; }
 
   .games-grid, .leaders-grid, .standings-grid, .trade-sides { grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -573,6 +607,6 @@ a.card:active { background: var(--surface-2); }
 
 @media (prefers-reduced-motion: reduce) {
   a.card { transition: none; }
-  body::before, .topbar::after, .gotw::after { animation: none; }
-  .topbar::after, .gotw::after { display: none; }
+  body::before, .wordmark::after, .gotw::after { animation: none; }
+  .wordmark::after, .gotw::after { display: none; }
 }

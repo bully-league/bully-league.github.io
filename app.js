@@ -157,14 +157,22 @@ function gameCard(g) {
   const card = el(isLink ? "a" : "div", "card" + (g.isGotw ? " gotw" : ""));
   if (isLink) { card.href = g.channelUrl; card.target = "_blank"; card.rel = "noopener"; }
 
+  const away = team(g.awayTeamId), home = team(g.homeTeamId);
+
   if (g.isGotw) {
     const eyebrow = el("div", "gotw-eyebrow");
     eyebrow.appendChild(svgIcon("M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3 7.2 16.9l.9-5.4L4.2 7.7l5.4-.8z"));
     eyebrow.appendChild(document.createTextNode("Game of the Week"));
     card.appendChild(eyebrow);
-  }
 
-  const away = team(g.awayTeamId), home = team(g.homeTeamId);
+    const billboard = el("div", "gotw-billboard");
+    billboard.style.setProperty("--bb-away", railColor(away.abbr));
+    billboard.style.setProperty("--bb-home", railColor(home.abbr));
+    billboard.appendChild(logoImg(away.abbr, "bb-logo"));
+    billboard.appendChild(el("span", "gotw-vs", "VS"));
+    billboard.appendChild(logoImg(home.abbr, "bb-logo"));
+    card.appendChild(billboard);
+  }
   const body = el("div", "game");
   body.style.setProperty("--rail", `linear-gradient(to bottom, ${railColor(away.abbr)} 0%, ${railColor(away.abbr)} 48%, ${railColor(home.abbr)} 52%, ${railColor(home.abbr)} 100%)`);
 
