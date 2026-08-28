@@ -307,6 +307,113 @@ a.card:active { background: var(--surface-2); }
   text-align: center; line-height: 1.5;
 }
 
+/* ---------- Trade builder ---------- */
+.trade-intro { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin: 0 2px 12px; }
+.trade-teams { display: grid; grid-template-columns: 1fr 34px 1fr; gap: 6px; align-items: center; margin-bottom: 12px; }
+.trade-teams .swap-glyph { text-align: center; color: var(--text-faint); font-size: 16px; }
+.team-select {
+  width: 100%;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px;
+  padding: 10px 8px; font-size: 14px;
+  font-family: "Archivo", sans-serif; font-weight: 700; font-stretch: 90%;
+}
+.trade-side { margin-bottom: 6px; }
+.trade-side-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 2px 6px;
+}
+.trade-side-head .logo { width: 20px; height: 20px; }
+.trade-side-head .label {
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 85%;
+  font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+}
+.trade-side-head .side-total { margin-left: auto; font-family: "Archivo", sans-serif; font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
+.asset-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.asset-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface-2); border: 1px solid var(--edge); border-radius: 999px;
+  padding: 4px 8px 4px 4px; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.asset-chip .avatar { width: 22px; height: 22px; font-size: 9px; border-width: 1.5px; }
+.asset-chip .chip-x { color: var(--text-faint); font-size: 13px; padding: 0 2px; }
+.asset-chip .chip-val { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.roster-search {
+  width: 100%;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px;
+  padding: 9px 12px; font-size: 13.5px; margin-bottom: 6px;
+  font-family: inherit;
+}
+.roster-search::placeholder { color: var(--text-faint); }
+.roster-list { max-height: 264px; overflow-y: auto; }
+.roster-item {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  background: none; border: 0; border-bottom: 1px solid var(--edge);
+  color: var(--text); font-family: inherit; font-size: 13.5px;
+  padding: 7px 12px; cursor: pointer;
+}
+.roster-item:last-child { border-bottom: 0; }
+.roster-item:active { background: var(--surface-2); }
+.roster-item .avatar { width: 28px; height: 28px; font-size: 10px; border-width: 1.5px; }
+.roster-item .ri-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster-item .ri-sub { color: var(--text-faint); font-size: 11px; }
+.roster-item .ri-val { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.roster-item.selected { color: var(--text-faint); }
+.roster-item.selected .ri-check { color: var(--up); }
+.pick-adder { display: flex; gap: 6px; margin: 8px 0 2px; }
+.pick-adder select {
+  flex: 1;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px;
+  padding: 8px 6px; font-size: 12.5px; font-family: inherit;
+}
+.pick-adder .add-pick-btn {
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px;
+  padding: 8px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+}
+.trade-summary {
+  position: sticky; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+  margin-top: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--edge); border-radius: var(--radius);
+  padding: 11px 14px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.45);
+}
+.trade-summary .fairness { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.trade-summary .totals {
+  display: flex; justify-content: space-between;
+  font-family: "Archivo", sans-serif; font-weight: 900; font-size: 15px;
+  font-variant-numeric: tabular-nums; margin-bottom: 8px;
+}
+.trade-cta {
+  display: block; width: 100%;
+  background: var(--red); color: #fff;
+  border: 0; border-radius: 9px;
+  padding: 12px; font-size: 14px; font-weight: 800;
+  font-family: "Archivo", sans-serif; letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer;
+}
+.trade-cta:disabled { background: var(--surface); color: var(--text-faint); cursor: default; border: 1px solid var(--edge); }
+.trade-code-box {
+  margin-top: 10px;
+  background: var(--bg); border: 1px solid var(--edge); border-radius: 8px;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  word-break: break-all; color: var(--text-dim);
+  user-select: all; -webkit-user-select: all;
+}
+.trade-code-hint { font-size: 12px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
+.trade-code-hint code {
+  background: var(--bg); border: 1px solid var(--edge); border-radius: 5px;
+  padding: 1px 5px; font-size: 11px;
+}
+.copied-flash { color: var(--up); font-weight: 700; }
+
 /* ---------- Empty states ---------- */
 .empty { color: var(--text-faint); text-align: center; padding: 34px 20px; font-size: 13px; }
 
@@ -395,7 +502,8 @@ a.card:active { background: var(--surface-2); }
   .tab.active:hover { color: var(--gold); }
   .view { order: 3; width: 100%; max-width: 1060px; padding: 22px 28px 40px; }
 
-  .games-grid, .leaders-grid, .standings-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .games-grid, .leaders-grid, .standings-grid, .trade-sides { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .trade-summary { bottom: 12px; }
   .grid { align-items: start; }
   .feed { max-width: 620px; margin-left: auto; margin-right: auto; }
   .view > .card.gotw { max-width: none; }

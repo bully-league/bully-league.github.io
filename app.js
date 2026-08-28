@@ -376,17 +376,253 @@ function renderNews(view) {
   view.appendChild(el("div", "news-disclaimer", "League insiders are AI personalities generated from this league's real synced data. Not real reporters, not real reporting."));
 }
 
+/* ---------- Trade builder ----------
+   Builds a trade from the rosters already in site.json and encodes it as an
+   `FO1.` code — the SAME format src/discord/tradeCode.ts decodes. No server:
+   the code is pasted into Discord (/trade import), and Discord supplies the
+   identity. Pick values mirror src/discord/draftPickValue.ts's constants. */
+
+const TRADE = {
+  a: null, b: null,           // teamIds
+  aPlayers: [], bPlayers: [], // rosterIds
+  aPicks: [], bPicks: [],     // [round, slotOrNull, yearOffset]
+  code: null,                 // generated code, cleared on any edit
+};
+const tradeSearchQ = { a: "", b: "" }; // transient per-side roster filter, survives re-renders but not reloads
+
+function tradeSaveState() {
+  try { localStorage.setItem("trade-draft", JSON.stringify(TRADE)); } catch {}
+}
+function tradeLoadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("trade-draft") || "null");
+    if (saved && typeof saved === "object") Object.assign(TRADE, saved, { code: null });
+  } catch {}
+}
+tradeLoadState();
+
+function base64url(str) {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(str)))
+    .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function buildTradeCode() {
+  return "FO1." + base64url(JSON.stringify([TRADE.a, TRADE.b, TRADE.aPlayers, TRADE.bPlayers, TRADE.aPicks, TRADE.bPicks]));
+}
+
+/* Mirrors computeDraftPickValue in draftPickValue.ts — keep the constants in sync. */
+function pickValue(round, slot, yearOffset) {
+  const perRound = DATA.picksPerRound || 32;
+  const s = Math.min(Math.max(slot == null ? Math.ceil(perRound / 2) : slot, 1), perRound);
+  const overall = (round - 1) * perRound + s;
+  return Math.round(650 * Math.pow(0.97, overall - 1) * Math.pow(0.85, yearOffset));
+}
+
+const YEAR_WORDS = ["this year", "next year", "year after"];
+function pickChipLabel(p) {
+  const [round, slot, yr] = p;
+  return `${round}${["st","nd","rd"][round-1] || "th"} rd${slot ? ` (${round}.${String(slot).padStart(2,"0")})` : ""} · ${YEAR_WORDS[yr]}`;
+}
+
+function rosterOf(teamId) { return (DATA.rosters && DATA.rosters[String(teamId)]) || []; }
+
+function sideTotal(teamId, playerIds, picks) {
+  const roster = rosterOf(teamId);
+  const pv = playerIds.reduce((sum, id) => sum + ((roster.find((p) => p.id === id) || {}).value || 0), 0);
+  return pv + picks.reduce((sum, p) => sum + pickValue(p[0], p[1], p[2]), 0);
+}
+
+function tradeEdited() { TRADE.code = null; tradeSaveState(); render(); }
+
+function renderTradeSide(container, sideKey) {
+  const teamId = TRADE[sideKey];
+  const playersKey = sideKey + "Players", picksKey = sideKey + "Picks";
+  const t = team(teamId);
+  const wrap = el("div", "trade-side");
+
+  const head = el("div", "trade-side-head");
+  head.appendChild(logoImg(t.abbr));
+  head.appendChild(el("span", "label", `${t.nick} send`));
+  head.appendChild(el("span", "side-total", String(sideTotal(teamId, TRADE[playersKey], TRADE[picksKey]))));
+  wrap.appendChild(head);
+
+  const chips = el("div", "asset-chips");
+  for (const id of TRADE[playersKey]) {
+    const p = rosterOf(teamId).find((r) => r.id === id);
+    if (!p) continue;
+    const chip = el("button", "asset-chip");
+    chip.type = "button";
+    chip.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
+    chip.appendChild(el("span", null, p.name));
+    chip.appendChild(el("span", "chip-val", String(p.value)));
+    chip.appendChild(el("span", "chip-x", "✕"));
+    chip.addEventListener("click", () => { TRADE[playersKey] = TRADE[playersKey].filter((x) => x !== id); tradeEdited(); });
+    chips.appendChild(chip);
+  }
+  TRADE[picksKey].forEach((pk, i) => {
+    const chip = el("button", "asset-chip");
+    chip.type = "button";
+    chip.appendChild(el("span", null, "🎟 " + pickChipLabel(pk)));
+    chip.appendChild(el("span", "chip-val", String(pickValue(pk[0], pk[1], pk[2]))));
+    chip.appendChild(el("span", "chip-x", "✕"));
+    chip.addEventListener("click", () => { TRADE[picksKey].splice(i, 1); tradeEdited(); });
+    chips.appendChild(chip);
+  });
+  if (chips.childNodes.length) wrap.appendChild(chips);
+
+  const search = el("input", "roster-search");
+  search.type = "search";
+  search.placeholder = `Search the ${t.nick} roster…`;
+  search.value = tradeSearchQ[sideKey] || "";
+  wrap.appendChild(search);
+
+  const listCard = el("div", "card");
+  const list = el("div", "roster-list");
+  listCard.appendChild(list);
+  wrap.appendChild(listCard);
+
+  const renderList = () => {
+    const q = search.value.trim().toLowerCase();
+    list.replaceChildren();
+    const rows = rosterOf(teamId).filter((p) => !q || p.name.toLowerCase().includes(q) || p.pos.toLowerCase() === q);
+    for (const p of rows.slice(0, q ? 50 : 200)) {
+      const selected = TRADE[playersKey].includes(p.id);
+      const item = el("button", "roster-item" + (selected ? " selected" : ""));
+      item.type = "button";
+      item.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
+      item.appendChild(el("span", "ri-name", p.name));
+      item.appendChild(el("span", "ri-sub", `${p.pos} · ${p.ovr} OVR`));
+      item.appendChild(el("span", "ri-val", selected ? "" : String(p.value)));
+      if (selected) item.appendChild(el("span", "ri-check", "✓"));
+      item.addEventListener("click", () => {
+        if (selected) TRADE[playersKey] = TRADE[playersKey].filter((x) => x !== p.id);
+        else if (TRADE[playersKey].length < 10) TRADE[playersKey] = [...TRADE[playersKey], p.id];
+        tradeEdited();
+      });
+      list.appendChild(item);
+    }
+    if (!rows.length) list.appendChild(el("div", "empty", "No players match."));
+  };
+  search.addEventListener("input", () => { tradeSearchQ[sideKey] = search.value; renderList(); });
+  renderList();
+
+  const adder = el("div", "pick-adder");
+  const roundSel = el("select");
+  for (let r = 1; r <= 7; r++) roundSel.appendChild(new Option(`Round ${r}`, String(r)));
+  const yearSel = el("select");
+  YEAR_WORDS.forEach((w, i) => yearSel.appendChild(new Option(w[0].toUpperCase() + w.slice(1), String(i))));
+  const addBtn = el("button", "add-pick-btn", "+ Pick");
+  addBtn.type = "button";
+  addBtn.addEventListener("click", () => {
+    if (TRADE[picksKey].length >= 10) return;
+    TRADE[picksKey] = [...TRADE[picksKey], [Number(roundSel.value), null, Number(yearSel.value)]];
+    tradeEdited();
+  });
+  adder.appendChild(roundSel);
+  adder.appendChild(yearSel);
+  adder.appendChild(addBtn);
+  wrap.appendChild(adder);
+
+  container.appendChild(wrap);
+}
+
+function renderTrade(view) {
+  if (!DATA.rosters) {
+    view.appendChild(el("div", "empty", "Trade data isn't in this site version yet — it appears after the next league sync."));
+    return;
+  }
+  view.appendChild(sectionHead("Trade Builder", "no login needed"));
+  view.appendChild(el("p", "trade-intro", "Build the deal here, then paste the code into Discord — the bot opens it for review and the committee vote. Whoever pastes it is the proposer."));
+
+  const pickers = el("div", "trade-teams");
+  for (const key of ["a", "b"]) {
+    const sel = el("select", "team-select");
+    sel.appendChild(new Option(key === "a" ? "Team A…" : "Team B…", ""));
+    for (const t of [...DATA.teams].sort((x, y) => x.nick.localeCompare(y.nick))) {
+      const opt = new Option(t.nick, String(t.teamId));
+      opt.selected = TRADE[key] === t.teamId;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => {
+      TRADE[key] = sel.value ? Number(sel.value) : null;
+      TRADE[key + "Players"] = [];
+      TRADE[key + "Picks"] = [];
+      tradeEdited();
+    });
+    pickers.appendChild(sel);
+    if (key === "a") pickers.appendChild(el("div", "swap-glyph", "⇄"));
+  }
+  view.appendChild(pickers);
+
+  if (!TRADE.a || !TRADE.b) {
+    view.appendChild(el("div", "empty", "Pick both teams to start building."));
+    return;
+  }
+  if (TRADE.a === TRADE.b) {
+    view.appendChild(el("div", "empty", "Pick two different teams."));
+    return;
+  }
+
+  const sides = el("div", "grid trade-sides");
+  renderTradeSide(sides, "a");
+  renderTradeSide(sides, "b");
+  view.appendChild(sides);
+
+  const totalA = sideTotal(TRADE.a, TRADE.aPlayers, TRADE.aPicks);
+  const totalB = sideTotal(TRADE.b, TRADE.bPlayers, TRADE.bPicks);
+  const hasAssets = TRADE.aPlayers.length + TRADE.bPlayers.length + TRADE.aPicks.length + TRADE.bPicks.length > 0;
+
+  const summary = el("div", "trade-summary");
+  const totals = el("div", "totals");
+  totals.appendChild(el("span", null, `${team(TRADE.a).abbr} ${totalA}`));
+  totals.appendChild(el("span", null, `${team(TRADE.b).abbr} ${totalB}`));
+  summary.appendChild(totals);
+  // Same math as trade.ts's fairnessLine: whoever SENDS more value favors the other side.
+  const combined = totalA + totalB;
+  const pct = combined > 0 ? (Math.abs(totalA - totalB) / (combined / 2)) * 100 : 0;
+  const verdict = !hasAssets ? "Add players or picks to either side." : pct < 10 ? `Roughly even (within ${pct.toFixed(0)}%).` : `Favors ${totalA > totalB ? team(TRADE.b).nick : team(TRADE.a).nick} by ~${pct.toFixed(0)}%.`;
+  summary.appendChild(el("div", "fairness", verdict));
+
+  const cta = el("button", "trade-cta", TRADE.code ? "Copy Again" : "Get Trade Code");
+  cta.type = "button";
+  cta.disabled = !hasAssets;
+  cta.addEventListener("click", async () => {
+    TRADE.code = buildTradeCode();
+    try { await navigator.clipboard.writeText(TRADE.code); cta.textContent = "Copied!"; cta.classList.add("copied-flash"); } catch {}
+    tradeSaveState();
+    render();
+  });
+  summary.appendChild(cta);
+
+  if (TRADE.code) {
+    summary.appendChild(el("div", "trade-code-box", TRADE.code));
+    const hint = el("div", "trade-code-hint");
+    hint.append("Copied. In Discord, run ");
+    const cmd = el("code", null, "/trade import");
+    hint.appendChild(cmd);
+    hint.append(" and paste this as the code. The bot opens the trade for review — Evaluate, then Submit to the committee.");
+    summary.appendChild(hint);
+  }
+  view.appendChild(summary);
+}
+
 /* ---------- App shell ---------- */
 
-const RENDERERS = { home: renderHome, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews };
+const RENDERERS = { home: renderHome, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
 let activeTab = "home";
+let lastRenderedTab = null;
 
 function render() {
   const view = document.getElementById("view");
+  const keepScroll = lastRenderedTab === activeTab;
+  const y = window.scrollY;
   view.replaceChildren();
   if (!DATA) { view.appendChild(el("div", "loading", "Loading league data…")); return; }
   RENDERERS[activeTab](view);
-  window.scrollTo(0, 0);
+  lastRenderedTab = activeTab;
+  // Re-rendering the SAME tab (the trade builder does this on every tap) keeps the
+  // scroll position; switching tabs starts at the top like a page change should.
+  window.scrollTo(0, keepScroll ? y : 0);
 }
 
 for (const btn of document.querySelectorAll(".tab")) {
