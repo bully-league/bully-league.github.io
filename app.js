@@ -236,6 +236,85 @@ function scoreStrip(games) {
   return strip;
 }
 
+/* ---------- Front page (Home) ----------
+   ESPN anatomy: score rail on top, a HERO, then a main scoreboard column with a
+   right rail of Top Headlines / Injury Report / Transactions (rail stacks under
+   on phones). The flash lives in the hero and the rail density, not the chrome. */
+
+function heroCard(g) {
+  const away = team(g.awayTeamId), home = team(g.homeTeamId);
+  const hero = el(g.channelUrl ? "a" : "div", "hero");
+  if (g.channelUrl) { hero.href = g.channelUrl; hero.target = "_blank"; hero.rel = "noopener"; }
+  hero.style.setProperty("--bb-away", railColor(away.abbr));
+  hero.style.setProperty("--bb-home", railColor(home.abbr));
+
+  const eyebrow = el("div", "hero-eyebrow");
+  eyebrow.appendChild(svgIcon("M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3 7.2 16.9l.9-5.4L4.2 7.7l5.4-.8z"));
+  eyebrow.appendChild(document.createTextNode(`Game of the Week · ${DATA.week.label}`));
+  hero.appendChild(eyebrow);
+
+  const face = el("div", "hero-face");
+  for (const [t, side] of [[away, "away"], [home, "home"]]) {
+    const block = el("div", "hero-team " + side);
+    block.appendChild(logoImg(t.abbr, "hero-logo"));
+    const name = el("div", "hero-name");
+    name.appendChild(el("div", "hero-nick", t.nick.toUpperCase()));
+    name.appendChild(el("div", "hero-rec", record(t.teamId) || t.abbr));
+    block.appendChild(name);
+    face.appendChild(block);
+    if (side === "away") face.appendChild(el("div", "hero-vs", "VS"));
+  }
+  hero.appendChild(face);
+
+  const meta = el("div", "hero-meta");
+  const decided = g.played;
+  meta.appendChild(el("span", "hero-status", decided ? `FINAL · ${away.abbr} ${g.awayScore} — ${home.abbr} ${g.homeScore}` : "THIS WEEK"));
+  if (g.channelUrl) meta.appendChild(el("span", "hero-cta", "Open game channel →"));
+  hero.appendChild(meta);
+  return hero;
+}
+
+function railCard(title, rows) {
+  const card = el("div", "card rail-card");
+  card.appendChild(el("div", "rail-head", title));
+  for (const row of rows) card.appendChild(row);
+  return card;
+}
+
+function headlineRow(post) {
+  const row = el("div", "headline-item");
+  const text = post.text.length > 120 ? post.text.slice(0, post.text.lastIndexOf(" ", 120)) + "…" : post.text;
+  row.appendChild(el("div", "headline-text", text));
+  row.appendChild(el("div", "headline-by", `${post.name} · ${timeAgo(post.postedAt)}`));
+  return row;
+}
+
+function injuryRow(inj) {
+  const row = el("div", "wire-row");
+  row.appendChild(avatar({ name: inj.name, teamId: inj.teamId, portraitId: inj.portraitId }));
+  const who = el("div", "wire-who");
+  who.appendChild(el("div", "wire-name", inj.name));
+  who.appendChild(el("div", "wire-sub", `${inj.pos} · ${team(inj.teamId).abbr}`));
+  row.appendChild(who);
+  row.appendChild(el("span", "wire-tag out", inj.weeksOut >= 17 ? "OUT · SEASON" : `OUT ~${inj.weeksOut} WK${inj.weeksOut === 1 ? "" : "S"}`));
+  return row;
+}
+
+const TX_LABEL = { signed: "SIGN", dropped: "CUT", traded: "TRADE" };
+
+function txRow(tx) {
+  const row = el("div", "wire-row");
+  row.appendChild(el("span", "wire-tag tx-" + tx.kind, TX_LABEL[tx.kind] || tx.kind.toUpperCase()));
+  const who = el("div", "wire-who");
+  who.appendChild(el("div", "wire-name", `${tx.playerName}`));
+  const from = tx.fromTeamId ? team(tx.fromTeamId).abbr : "FA";
+  const to = tx.toTeamId ? team(tx.toTeamId).abbr : "FA";
+  who.appendChild(el("div", "wire-sub", `${tx.position} · ${from} → ${to}`));
+  row.appendChild(who);
+  row.appendChild(el("span", "wire-time", timeAgo(tx.at)));
+  return row;
+}
+
 function renderHome(view) {
   const games = (DATA.week.games || []).slice();
   const gotw = games.filter((g) => g.isGotw);
@@ -243,22 +322,34 @@ function renderHome(view) {
 
   if (games.length) view.appendChild(scoreStrip(games));
 
-  if (gotw.length) {
-    view.appendChild(sectionHead("Spotlight", DATA.week.label));
-    for (const g of gotw) view.appendChild(gameCard(g));
-  }
-  view.appendChild(sectionHead(gotw.length ? "This Week" : `Games — ${DATA.week.label}`, `${games.length} games`));
-  if (!rest.length && !gotw.length) view.appendChild(el("div", "empty", "No games on the schedule yet — check back after the next sync."));
+  const page = el("div", "front");
+  const main = el("div", "front-main");
+  const rail = el("div", "front-rail");
+
+  if (gotw.length) main.appendChild(heroCard(gotw[0]));
+
+  main.appendChild(sectionHead("Scoreboard", `${games.length} games`));
+  if (!games.length) main.appendChild(el("div", "empty", "No games on the schedule yet — check back after the next sync."));
   const grid = el("div", "grid games-grid");
-  for (const g of rest) grid.appendChild(gameCard(g));
-  view.appendChild(grid);
+  for (const g of [...gotw.slice(1), ...rest]) grid.appendChild(gameCard(g));
+  main.appendChild(grid);
 
   if ((DATA.news || []).length) {
-    view.appendChild(sectionHead("Latest From The Wire", ""));
-    const feed = el("div", "grid feed");
-    for (const post of DATA.news.slice(0, 2)) feed.appendChild(newsCard(post));
-    view.appendChild(feed);
+    rail.appendChild(sectionHead("Top Headlines", ""));
+    rail.appendChild(railCard("From the insiders", DATA.news.slice(0, 6).map(headlineRow)));
   }
+  if ((DATA.injuries || []).length) {
+    rail.appendChild(sectionHead("Injury Report", ""));
+    rail.appendChild(railCard("Currently out", DATA.injuries.slice(0, 8).map(injuryRow)));
+  }
+  if ((DATA.transactions || []).length) {
+    rail.appendChild(sectionHead("Transactions", ""));
+    rail.appendChild(railCard("The wire", DATA.transactions.slice(0, 8).map(txRow)));
+  }
+
+  page.appendChild(main);
+  if (rail.childNodes.length) page.appendChild(rail);
+  view.appendChild(page);
 }
 
 function renderStandings(view) {

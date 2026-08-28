@@ -261,6 +261,110 @@ a.card:active { background: var(--surface-2); }
   text-shadow: 0 2px 8px rgba(0,0,0,.6);
 }
 
+/* ---------- Front page (Home) ---------- */
+.front-rail { margin-top: 4px; }
+
+/* HERO: the pregame billboard, full size. The two teams' colors collide at a
+   diagonal seam; nicknames run huge in italic condensed caps. This is the flash. */
+.hero {
+  position: relative; display: block;
+  margin: 14px 0 4px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  text-decoration: none; color: inherit;
+  border: 1px solid rgba(232,184,75,.4);
+  background:
+    linear-gradient(rgba(10,11,12,.36), rgba(12,13,14,.55)),
+    linear-gradient(105deg, var(--bb-away, #333) 0%, var(--bb-away, #333) 44%, #0c0d0e 50%, var(--bb-home, #333) 56%, var(--bb-home, #333) 100%);
+}
+.hero::after {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.14) 50%, transparent 62%);
+  transform: translateX(-130%);
+  animation: masthead-sheen 8s ease-in-out infinite;
+}
+.hero-eyebrow {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px 16px 0;
+  font-family: "Archivo", sans-serif; font-style: italic; font-weight: 900;
+  font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
+  text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.hero-eyebrow svg { width: 13px; height: 13px; fill: var(--gold); }
+.hero-face {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 10px;
+  gap: 8px;
+}
+.hero-team { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.hero-team.home { flex-direction: row-reverse; text-align: right; }
+.hero-logo { width: 58px; height: 58px; flex: none; filter: drop-shadow(0 5px 14px rgba(0,0,0,.6)); }
+.hero-nick {
+  font-family: "Archivo", sans-serif; font-style: italic;
+  font-weight: 900; font-stretch: 68%; font-size: 25px; line-height: .95;
+  color: #fff; letter-spacing: .01em;
+  text-shadow: 0 2px 8px rgba(0,0,0,.65);
+  overflow-wrap: anywhere;
+}
+.hero-rec { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.75); margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.hero-vs {
+  font-family: "Archivo", sans-serif; font-style: italic; font-weight: 900;
+  font-stretch: 72%; font-size: 20px; color: rgba(255,255,255,.9); flex: none;
+  text-shadow: 0 2px 8px rgba(0,0,0,.7);
+}
+.hero-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px 12px;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 11px;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.hero-status { color: rgba(255,255,255,.85); text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.hero-cta { color: #fff; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 5px 12px; }
+
+/* Rail cards: dense editorial lists — headlines, injuries, transactions */
+.rail-card { padding-bottom: 2px; }
+.rail-head {
+  padding: 10px 14px 8px;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 80%;
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--edge);
+}
+.headline-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--edge);
+  border-left: 3px solid transparent;
+}
+.headline-item:last-child { border-bottom: 0; }
+.headline-item:hover { border-left-color: var(--red-bright); background: var(--surface-2); }
+.headline-text {
+  font-family: "Archivo", sans-serif; font-weight: 700; font-stretch: 92%;
+  font-size: 13.5px; line-height: 1.35;
+}
+.headline-by { margin-top: 4px; font-size: 11px; color: var(--text-faint); }
+.wire-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--edge);
+  font-size: 13px;
+}
+.wire-row:last-child { border-bottom: 0; }
+.wire-row .avatar { width: 30px; height: 30px; font-size: 10px; border-width: 1.5px; }
+.wire-who { min-width: 0; }
+.wire-name { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wire-sub { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.wire-tag {
+  margin-left: auto; flex: none;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9.5px;
+  letter-spacing: .08em; padding: 3px 7px; border-radius: 5px;
+}
+.wire-tag.out { color: var(--down); background: rgba(229,96,79,.12); }
+.wire-tag.tx-signed { margin-left: 0; color: var(--up); background: rgba(63,202,127,.12); }
+.wire-tag.tx-dropped { margin-left: 0; color: var(--down); background: rgba(229,96,79,.12); }
+.wire-tag.tx-traded { margin-left: 0; color: var(--gold); background: rgba(232,184,75,.12); }
+.wire-time { margin-left: auto; flex: none; font-size: 10.5px; color: var(--text-faint); }
+
 /* ---------- Standings ---------- */
 .division-block { margin-bottom: 4px; }
 .division-label {
@@ -589,6 +693,11 @@ a.card:active { background: var(--surface-2); }
   .view { order: 3; width: 100%; max-width: 1060px; padding: 22px 28px 40px; }
 
   .games-grid, .leaders-grid, .standings-grid, .trade-sides { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .front { display: grid; grid-template-columns: 1.85fr 1fr; gap: 20px; align-items: start; }
+  .front-rail { margin-top: 0; }
+  .hero { margin-top: 10px; }
+  .hero-nick { font-size: 34px; }
+  .hero-logo { width: 72px; height: 72px; }
   .trade-summary { bottom: 12px; }
   .grid { align-items: start; }
   .feed { max-width: 620px; margin-left: auto; margin-right: auto; }
@@ -607,6 +716,6 @@ a.card:active { background: var(--surface-2); }
 
 @media (prefers-reduced-motion: reduce) {
   a.card { transition: none; }
-  body::before, .wordmark::after, .gotw::after { animation: none; }
-  .wordmark::after, .gotw::after { display: none; }
+  body::before, .wordmark::after, .gotw::after, .hero::after { animation: none; }
+  .wordmark::after, .gotw::after, .hero::after { display: none; }
 }
