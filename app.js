@@ -258,8 +258,8 @@ function heroCard(g) {
     const block = el("div", "hero-team " + side);
     block.appendChild(logoImg(t.abbr, "hero-logo"));
     const name = el("div", "hero-name");
-    name.appendChild(el("div", "hero-nick", t.nick.toUpperCase()));
-    name.appendChild(el("div", "hero-rec", record(t.teamId) || t.abbr));
+    name.appendChild(el("span", "hero-nick", t.nick.toUpperCase()));
+    name.appendChild(el("span", "hero-rec", record(t.teamId) || t.abbr));
     block.appendChild(name);
     face.appendChild(block);
     if (side === "away") face.appendChild(el("div", "hero-vs", "VS"));

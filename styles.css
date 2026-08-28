@@ -292,25 +292,29 @@ a.card:active { background: var(--surface-2); }
   text-shadow: 0 1px 4px rgba(0,0,0,.6);
 }
 .hero-eyebrow svg { width: 13px; height: 13px; fill: var(--gold); }
+/* Phones: the matchup stacks like a broadcast lower-third (away row, VS, home
+   row) so nicknames get a full line of huge type. Desktop (below) switches to
+   the side-by-side face-off. */
 .hero-face {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px 10px;
-  gap: 8px;
+  display: flex; flex-direction: column;
+  padding: 12px 18px 8px;
+  gap: 2px;
 }
-.hero-team { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.hero-team.home { flex-direction: row-reverse; text-align: right; }
-.hero-logo { width: 58px; height: 58px; flex: none; filter: drop-shadow(0 5px 14px rgba(0,0,0,.6)); }
+.hero-team { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.hero-logo { width: 52px; height: 52px; flex: none; filter: drop-shadow(0 5px 14px rgba(0,0,0,.6)); }
+.hero-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .hero-nick {
   font-family: "Archivo", sans-serif; font-style: italic;
-  font-weight: 900; font-stretch: 68%; font-size: 25px; line-height: .95;
+  font-weight: 900; font-stretch: 68%; font-size: 28px; line-height: 1.05;
   color: #fff; letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   text-shadow: 0 2px 8px rgba(0,0,0,.65);
-  overflow-wrap: anywhere;
 }
-.hero-rec { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.75); margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.hero-rec { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.75); text-shadow: 0 1px 3px rgba(0,0,0,.6); flex: none; }
 .hero-vs {
   font-family: "Archivo", sans-serif; font-style: italic; font-weight: 900;
-  font-stretch: 72%; font-size: 20px; color: rgba(255,255,255,.9); flex: none;
+  font-stretch: 72%; font-size: 12px; color: rgba(255,255,255,.65); flex: none;
+  padding-left: 66px; letter-spacing: .2em;
   text-shadow: 0 2px 8px rgba(0,0,0,.7);
 }
 .hero-meta {
@@ -696,8 +700,12 @@ a.card:active { background: var(--surface-2); }
   .front { display: grid; grid-template-columns: 1.85fr 1fr; gap: 20px; align-items: start; }
   .front-rail { margin-top: 0; }
   .hero { margin-top: 10px; }
-  .hero-nick { font-size: 34px; }
-  .hero-logo { width: 72px; height: 72px; }
+  .hero-face { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 22px 10px; }
+  .hero-team.home { flex-direction: row-reverse; }
+  .hero-team.home .hero-name { flex-direction: row-reverse; }
+  .hero-nick { font-size: 33px; }
+  .hero-logo { width: 68px; height: 68px; }
+  .hero-vs { padding-left: 0; font-size: 19px; color: rgba(255,255,255,.9); }
   .trade-summary { bottom: 12px; }
   .grid { align-items: start; }
   .feed { max-width: 620px; margin-left: auto; margin-right: auto; }
