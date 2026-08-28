@@ -35,6 +35,26 @@ body {
   min-height: 100vh;
 }
 
+/* Broadcast atmosphere: faint diagonal yard-line texture drifting very slowly
+   behind everything. Deliberately at ~1.5% opacity — felt, not seen. A single
+   fixed, oversized, GPU-composited layer (transform only), ping-ponged with
+   `alternate` so there's no loop seam to hide. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -60% -60%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 94px, rgba(255,255,255,.011) 94px 96px),
+    repeating-linear-gradient(115deg, transparent 0 22px, rgba(255,255,255,.004) 22px 24px);
+  animation: field-drift 90s linear infinite alternate;
+}
+@keyframes field-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-120px, -56px, 0); }
+}
+
 .display { font-family: "Archivo", -apple-system, sans-serif; }
 
 /* ---------- Top bar ---------- */
@@ -44,6 +64,21 @@ body {
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   background: linear-gradient(160deg, #e6141b 0%, var(--red) 55%, #9c0408 100%);
   border-bottom: 1px solid #7d0306;
+  overflow: hidden;
+}
+/* Broadcast-graphics light sweep across the masthead — fires briefly, rests
+   most of the cycle, like a network bug rather than a strobing banner. */
+.topbar::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.16) 50%, transparent 58%);
+  transform: translateX(-130%) skewX(-8deg);
+  animation: masthead-sheen 9s ease-in-out infinite;
+}
+@keyframes masthead-sheen {
+  0%, 62% { transform: translateX(-130%) skewX(-8deg); }
+  82%, 100% { transform: translateX(130%) skewX(-8deg); }
 }
 .wordmark { display: flex; flex-direction: column; line-height: 1; transform: skewX(-8deg); }
 .wordmark-the {
@@ -164,10 +199,25 @@ a.card:active { background: var(--surface-2); }
 
 /* GOTW spotlight */
 .gotw {
+  position: relative;
   border-color: rgba(232,184,75,.45);
   background:
     radial-gradient(120% 90% at 50% 0%, rgba(232,184,75,.10), transparent 55%),
     var(--surface);
+}
+/* Slow gold shimmer across the featured card — the "under the lights" touch.
+   Long rest between passes so it reads as premium, not busy. */
+.gotw::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 44%, rgba(232,184,75,.10) 50%, transparent 56%);
+  transform: translateX(-130%);
+  animation: gotw-shimmer 12s ease-in-out infinite;
+}
+@keyframes gotw-shimmer {
+  0%, 68% { transform: translateX(-130%); }
+  88%, 100% { transform: translateX(130%); }
 }
 .gotw-eyebrow {
   display: flex; align-items: center; gap: 7px;
@@ -523,4 +573,6 @@ a.card:active { background: var(--surface-2); }
 
 @media (prefers-reduced-motion: reduce) {
   a.card { transition: none; }
+  body::before, .topbar::after, .gotw::after { animation: none; }
+  .topbar::after, .gotw::after { display: none; }
 }
