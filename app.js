@@ -369,7 +369,9 @@ function renderStandings(view) {
     const card = el("div", "card");
     for (const row of rows) {
       const t = team(row.teamId);
-      const r = el("div", "standings-row");
+      const r = el("button", "standings-row row-link");
+      r.type = "button";
+      r.addEventListener("click", () => openTeam(row.teamId));
       r.style.setProperty("--rail", railColor(t.abbr));
       r.appendChild(logoImg(t.abbr));
       r.appendChild(el("span", "name", t.nick));
@@ -392,7 +394,9 @@ function renderRankings(view) {
   const card = el("div", "card");
   for (const row of DATA.rankings || []) {
     const t = team(row.teamId);
-    const r = el("div", "rank-row");
+    const r = el("button", "rank-row row-link");
+    r.type = "button";
+    r.addEventListener("click", () => openTeam(row.teamId));
     r.style.setProperty("--rail", railColor(t.abbr));
     r.appendChild(el("div", "rank-num", String(row.rank)));
     r.appendChild(logoImg(t.abbr));
@@ -790,11 +794,148 @@ function renderTrade(view) {
   view.appendChild(summary);
 }
 
+/* ---------- Team page ---------- */
+
+const DEV_ORDER = { "X-Factor": 3, "Superstar": 2, "Star": 1, "Normal": 0 };
+
+function renderTeam(view, teamId) {
+  const t = team(teamId);
+  const standing = (DATA.standings || []).find((s) => s.teamId === teamId);
+  const rankRow = (DATA.rankings || []).find((r) => r.teamId === teamId);
+  const roster = (DATA.rosters && DATA.rosters[String(teamId)]) || [];
+
+  const back = el("button", "team-back", "← Back");
+  back.type = "button";
+  back.addEventListener("click", () => closeTeam(false));
+  view.appendChild(back);
+
+  // Hero banner in the team's colors with the oversized watermark
+  const hero = el("div", "team-hero");
+  hero.style.setProperty("--bb-away", railColor(t.abbr));
+  hero.style.setProperty("--bb-home", teamColor(t.abbr));
+  hero.appendChild(logoImg(t.abbr, "wm wm-away"));
+  const head = el("div", "team-hero-head");
+  head.appendChild(logoImg(t.abbr, "team-hero-logo"));
+  const who = el("div");
+  who.appendChild(el("div", "team-hero-city", (t.city || "").toUpperCase()));
+  who.appendChild(el("div", "team-hero-nick", t.nick.toUpperCase()));
+  const bits = [record(teamId), t.division, t.owner ? "Owner: " + t.owner : null].filter(Boolean).join(" · ");
+  who.appendChild(el("div", "team-hero-sub", bits));
+  head.appendChild(who);
+  hero.appendChild(head);
+  view.appendChild(hero);
+
+  // Stat chips
+  const chips = el("div", "team-chips");
+  const chip = (label, value) => {
+    const d = el("div", "team-chip");
+    d.appendChild(el("div", "team-chip-val", String(value)));
+    d.appendChild(el("div", "team-chip-label", label));
+    return d;
+  };
+  chips.appendChild(chip("Team OVR", t.ovr));
+  if (rankRow) chips.appendChild(chip("Power Rank", "#" + rankRow.rank));
+  if (standing) {
+    chips.appendChild(chip("PF (per gm)", standing.ptsFor));
+    chips.appendChild(chip("PA (per gm)", standing.ptsAgainst));
+    if (standing.offYdsRank) chips.appendChild(chip("Off Yds Rank", "#" + standing.offYdsRank));
+    if (standing.defYdsRank) chips.appendChild(chip("Def Yds Rank", "#" + standing.defYdsRank));
+  }
+  if (t.gotwCount) chips.appendChild(chip("GOTW Features", t.gotwCount + "x"));
+  view.appendChild(chips);
+
+  // CSV export — real static files written at publish time; `download` names the save
+  const exports = el("div", "team-exports");
+  const csvBtn = el("a", "trade-cta csv-btn", "⬇ Export Roster CSV");
+  csvBtn.href = "csv/team-" + teamId + ".csv";
+  csvBtn.setAttribute("download", (t.nick || "team") + "-roster.csv");
+  exports.appendChild(csvBtn);
+  const allBtn = el("a", "csv-all-link", "or download every player in the league (CSV)");
+  allBtn.href = "csv/all-players.csv";
+  allBtn.setAttribute("download", "all-players.csv");
+  exports.appendChild(allBtn);
+  view.appendChild(exports);
+
+  // Sortable roster table
+  view.appendChild(sectionHead("Roster", roster.length + " players"));
+  if (!roster.length) { view.appendChild(el("div", "empty", "No roster data — appears after the next sync.")); return; }
+
+  const wrap = el("div", "card table-wrap");
+  const table = el("table", "roster-table");
+  const thead = el("thead");
+  const headRow = el("tr");
+  const cols = [
+    { key: "name", label: "Player", sort: (p) => p.name },
+    { key: "pos", label: "POS", sort: (p) => p.pos },
+    { key: "ovr", label: "OVR", sort: (p) => p.ovr },
+    { key: "dev", label: "DEV", sort: (p) => DEV_ORDER[p.dev] ?? -1 },
+    { key: "age", label: "AGE", sort: (p) => p.age },
+    { key: "value", label: "VALUE", sort: (p) => p.value },
+  ];
+  for (const col of cols) {
+    const th = el("th", teamSort.col === col.key ? "sorted" : "");
+    th.textContent = col.label + (teamSort.col === col.key ? (teamSort.dir === -1 ? " ▾" : " ▴") : "");
+    th.addEventListener("click", () => {
+      if (teamSort.col === col.key) teamSort.dir *= -1;
+      else { teamSort.col = col.key; teamSort.dir = col.key === "name" || col.key === "pos" ? 1 : -1; }
+      render();
+    });
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const colDef = cols.find((col) => col.key === teamSort.col) || cols[2];
+  const sorted = roster.slice().sort((a, b) => {
+    const va = colDef.sort(a), vb = colDef.sort(b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * teamSort.dir;
+  });
+
+  const tbody = el("tbody");
+  for (const p of sorted) {
+    const tr = el("tr");
+    const nameTd = el("td", "rt-name");
+    nameTd.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
+    nameTd.appendChild(el("span", null, p.name));
+    tr.appendChild(nameTd);
+    tr.appendChild(el("td", null, p.pos));
+    tr.appendChild(el("td", "rt-num", String(p.ovr)));
+    const devTd = el("td");
+    devTd.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
+    tr.appendChild(devTd);
+    tr.appendChild(el("td", "rt-num", String(p.age ?? "—")));
+    tr.appendChild(el("td", "rt-num", p.value.toLocaleString()));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  view.appendChild(wrap);
+  view.appendChild(el("div", "news-disclaimer", "Full attributes, contracts, and every rating are in the CSV export above."));
+}
+
 /* ---------- App shell ---------- */
 
 const RENDERERS = { home: renderHome, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
 let activeTab = "home";
 let lastRenderedTab = null;
+let viewTeamId = null; // non-null = the team detail page is open over the current tab
+const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
+
+function openTeam(teamId) {
+  viewTeamId = teamId;
+  try { history.pushState({ team: teamId }, "", "#team-" + teamId); } catch {}
+  render();
+}
+function closeTeam(viaHistory) {
+  viewTeamId = null;
+  if (!viaHistory) { try { history.pushState(null, "", location.pathname + location.search); } catch {} }
+  render();
+}
+window.addEventListener("popstate", () => {
+  const m = (location.hash || "").match(/^#team-(\d+)$/);
+  viewTeamId = m ? Number(m[1]) : null;
+  render();
+});
 
 function render() {
   const view = document.getElementById("view");
@@ -802,6 +943,7 @@ function render() {
   const y = window.scrollY;
   view.replaceChildren();
   if (!DATA) { view.appendChild(el("div", "loading", "Loading league data…")); return; }
+  if (viewTeamId != null) { renderTeam(view, viewTeamId); lastRenderedTab = "team-" + viewTeamId; window.scrollTo(0, keepScroll ? y : 0); return; }
   RENDERERS[activeTab](view);
   lastRenderedTab = activeTab;
   // Re-rendering the SAME tab (the trade builder does this on every tap) keeps the
@@ -811,6 +953,8 @@ function render() {
 
 for (const btn of document.querySelectorAll(".tab")) {
   btn.addEventListener("click", () => {
+    viewTeamId = null;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     activeTab = btn.dataset.tab;
     for (const b of document.querySelectorAll(".tab")) {
       b.classList.toggle("active", b === btn);
@@ -835,6 +979,8 @@ async function load() {
   teamIndex.clear();
   for (const t of DATA.teams || []) teamIndex.set(t.teamId, t);
   document.getElementById("week-chip").textContent = DATA.weekLabel || "—";
+  const m = (location.hash || "").match(/^#team-(\d+)$/);
+  if (m) viewTeamId = Number(m[1]);
   render();
 }
 
