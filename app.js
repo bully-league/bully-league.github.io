@@ -175,6 +175,7 @@ function gameCard(g) {
   }
   const body = el("div", "game");
   body.style.setProperty("--rail", `linear-gradient(to bottom, ${railColor(away.abbr)} 0%, ${railColor(away.abbr)} 48%, ${railColor(home.abbr)} 52%, ${railColor(home.abbr)} 100%)`);
+  body.appendChild(logoImg(home.abbr, "wm"));
 
   const decidedByForce = g.forced === "forceWin";
   const awayWon = decidedByForce ? g.forcedWinnerTeamId === g.awayTeamId : g.played && g.awayScore > g.homeScore;
@@ -247,6 +248,8 @@ function heroCard(g) {
   if (g.channelUrl) { hero.href = g.channelUrl; hero.target = "_blank"; hero.rel = "noopener"; }
   hero.style.setProperty("--bb-away", railColor(away.abbr));
   hero.style.setProperty("--bb-home", railColor(home.abbr));
+  hero.appendChild(logoImg(away.abbr, "wm wm-away"));
+  hero.appendChild(logoImg(home.abbr, "wm wm-home"));
 
   const eyebrow = el("div", "hero-eyebrow");
   eyebrow.appendChild(svgIcon("M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3 7.2 16.9l.9-5.4L4.2 7.7l5.4-.8z"));
@@ -697,7 +700,7 @@ function renderTrade(view) {
     const keyHint = el("div", "trade-code-hint");
     keyHint.append("To submit straight to Discord, run ");
     keyHint.appendChild(el("code", null, "/site-key"));
-    keyHint.append(" there once, paste the key it DMs you here — this phone remembers it.");
+    keyHint.append(" there once — tapping the link it DMs you sets this up automatically (or paste the key here).");
     keyInput.addEventListener("change", () => {
       const v = keyInput.value.trim();
       if (v.startsWith("FOK1.")) {
@@ -821,6 +824,17 @@ async function load() {
   document.getElementById("week-chip").textContent = DATA.weekLabel || "—";
   render();
 }
+
+/* Magic-link setup: /site-key DMs a personal link ending in #k=FOK1... — tapping
+   it lands here, we store the key and scrub it from the URL immediately. The
+   fragment never reaches any server (fragments aren't sent in requests), so the
+   key exists only in the DM and this device. */
+(function keyFromLink() {
+  const m = (location.hash || "").match(/[#&]k=(FOK1\.[0-9]+\.[A-Za-z0-9_-]+)/);
+  if (!m) return;
+  try { localStorage.setItem("site-key", m[1]); } catch {}
+  history.replaceState(null, "", location.pathname + location.search);
+})();
 
 /* iOS install hint — Safari has no install prompt, so surface the one-time how-to. */
 (function iosHint() {

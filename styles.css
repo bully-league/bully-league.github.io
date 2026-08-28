@@ -3,22 +3,23 @@
    accents applied inline from app.js (EA/NFL palettes). Archivo carries the
    sporty condensed display voice; body text stays system for legibility. */
 
-/* ESPN-inspired chrome: signature red masthead, dark charcoal content, red
-   accents and active states, condensed uppercase headers. --gold survives only
-   for the GOTW star treatment. */
+/* ESPN.com editorial: WHITE content under the black bar + red slash masthead.
+   The hero/billboard graphics stay dark and vivid — they're broadcast art and
+   pop harder against the light page. --gold survives for the GOTW treatment. */
 :root {
-  --bg: #101112;
-  --surface: #1a1c1e;
-  --surface-2: #232629;
-  --edge: #2c3034;
-  --text: #f2f3f4;
-  --text-dim: #9aa1a8;
-  --text-faint: #62686e;
+  --bg: #f2f3f5;
+  --surface: #ffffff;
+  --surface-2: #eef0f2;
+  --edge: #dfe2e6;
+  --text: #10151b;
+  --text-dim: #57616c;
+  --text-faint: #8b949e;
   --red: #d00a10;
-  --red-bright: #ff2b33;
-  --gold: #e8b84b;
-  --up: #3fca7f;
-  --down: #e5604f;
+  --red-bright: #e2131b;
+  --gold: #b8860b;
+  --gold-bright: #e8b84b;
+  --up: #128a4d;
+  --down: #c93a2a;
   --tabbar-h: 62px;
   --radius: 10px;
 }
@@ -46,8 +47,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    repeating-linear-gradient(115deg, transparent 0 94px, rgba(255,255,255,.011) 94px 96px),
-    repeating-linear-gradient(115deg, transparent 0 22px, rgba(255,255,255,.004) 22px 24px);
+    repeating-linear-gradient(115deg, transparent 0 94px, rgba(16,21,27,.024) 94px 96px),
+    repeating-linear-gradient(115deg, transparent 0 22px, rgba(16,21,27,.008) 22px 24px);
   animation: field-drift 90s linear infinite alternate;
 }
 @keyframes field-drift {
@@ -153,6 +154,7 @@ body::before {
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(16,21,27,.06);
 }
 a.card { display: block; text-decoration: none; color: inherit; }
 a.card:active { background: var(--surface-2); }
@@ -186,7 +188,7 @@ a.card:active { background: var(--surface-2); }
 .game-row.loser .nick, .game-row.loser .score { color: var(--text-dim); }
 .game-row .winner-tick { width: 0; height: 0; margin-left: 6px;
   border-top: 5px solid transparent; border-bottom: 5px solid transparent;
-  border-right: 6px solid var(--text); }
+  border-right: 6px solid var(--red); }
 .game-meta {
   display: flex; align-items: center; gap: 8px;
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--edge);
@@ -199,19 +201,19 @@ a.card:active { background: var(--surface-2); }
   background: var(--surface-2); color: var(--text-dim);
   border: 1px solid var(--edge);
 }
-.chip.live { color: var(--up); border-color: rgba(63,202,127,.35); }
+.chip.live { color: var(--up); border-color: rgba(18,138,77,.35); }
 .chip.final { color: var(--text-dim); }
-.chip.forced { color: var(--down); border-color: rgba(229,96,79,.35); }
-.chip.fairsim { color: #c9a2ff; border-color: rgba(201,162,255,.3); }
-.discord-link { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: #7a8ff5; font-weight: 600; }
+.chip.forced { color: var(--down); border-color: rgba(201,58,42,.35); }
+.chip.fairsim { color: #7b4fd0; border-color: rgba(123,79,208,.3); }
+.discord-link { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: #5865f2; font-weight: 600; }
 .discord-link svg { width: 14px; height: 14px; fill: currentColor; }
 
 /* GOTW spotlight */
 .gotw {
   position: relative;
-  border-color: rgba(232,184,75,.45);
+  border-color: rgba(184,134,11,.5);
   background:
-    radial-gradient(120% 90% at 50% 0%, rgba(232,184,75,.10), transparent 55%),
+    radial-gradient(120% 90% at 50% 0%, rgba(232,184,75,.12), transparent 55%),
     var(--surface);
 }
 /* Slow gold shimmer across the featured card — the "under the lights" touch.
@@ -235,6 +237,8 @@ a.card:active { background: var(--surface-2); }
   letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
 }
 .gotw-eyebrow svg { width: 13px; height: 13px; fill: var(--gold); }
+/* hero eyebrow sits on the dark billboard art — keep the bright gold there */
+.hero .hero-eyebrow, .hero .hero-eyebrow svg { color: var(--gold-bright); fill: var(--gold-bright); }
 
 /* Broadcast matchup billboard: the two teams' colors meet at a diagonal seam,
    big logos squared off against each other — the graphic a pregame show would
@@ -363,11 +367,25 @@ a.card:active { background: var(--surface-2); }
   font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9.5px;
   letter-spacing: .08em; padding: 3px 7px; border-radius: 5px;
 }
-.wire-tag.out { color: var(--down); background: rgba(229,96,79,.12); }
-.wire-tag.tx-signed { margin-left: 0; color: var(--up); background: rgba(63,202,127,.12); }
-.wire-tag.tx-dropped { margin-left: 0; color: var(--down); background: rgba(229,96,79,.12); }
-.wire-tag.tx-traded { margin-left: 0; color: var(--gold); background: rgba(232,184,75,.12); }
+.wire-tag.out { color: var(--down); background: rgba(201,58,42,.1); }
+.wire-tag.tx-signed { margin-left: 0; color: var(--up); background: rgba(18,138,77,.12); }
+.wire-tag.tx-dropped { margin-left: 0; color: var(--down); background: rgba(201,58,42,.1); }
+.wire-tag.tx-traded { margin-left: 0; color: var(--gold); background: rgba(184,134,11,.13); }
 .wire-time { margin-left: auto; flex: none; font-size: 10.5px; color: var(--text-faint); }
+
+/* Oversized faded team-logo watermarks — the broadcast-graphics depth trick.
+   Absolutely positioned inside overflow-hidden cards, never intercept taps. */
+.wm {
+  position: absolute; pointer-events: none;
+  width: 150px; height: 150px;
+  opacity: .07; z-index: 0;
+}
+.game .wm { right: -34px; top: 50%; transform: translateY(-50%) rotate(-12deg); }
+.game > *:not(.wm) { position: relative; z-index: 1; }
+.hero .wm { width: 240px; height: 240px; opacity: .16; top: 50%; }
+.hero .wm.wm-away { left: -60px; transform: translateY(-50%) rotate(-14deg); }
+.hero .wm.wm-home { right: -60px; transform: translateY(-50%) rotate(14deg); }
+.hero > *:not(.wm) { position: relative; z-index: 1; }
 
 /* ---------- Standings ---------- */
 .division-block { margin-bottom: 4px; }
@@ -398,8 +416,8 @@ a.card:active { background: var(--surface-2); }
 }
 .standings-row .pts { font-size: 11px; color: var(--text-faint); width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
 .streak { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
-.streak.w { color: var(--up); background: rgba(63,202,127,.12); }
-.streak.l { color: var(--down); background: rgba(229,96,79,.12); }
+.streak.w { color: var(--up); background: rgba(18,138,77,.12); }
+.streak.l { color: var(--down); background: rgba(201,58,42,.1); }
 
 /* ---------- Rankings ---------- */
 .rank-row {
@@ -574,7 +592,7 @@ a.card:active { background: var(--surface-2); }
   background: var(--surface-2);
   border: 1px solid var(--edge); border-radius: var(--radius);
   padding: 11px 14px;
-  box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  box-shadow: 0 6px 22px rgba(16,21,27,.14);
 }
 .trade-summary .fairness { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
 .trade-summary .totals {
@@ -615,12 +633,13 @@ a.card:active { background: var(--surface-2); }
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
   display: flex;
-  background: rgba(15,20,27,.96);
+  background: rgba(255,255,255,.96);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--edge);
   padding-bottom: env(safe-area-inset-bottom);
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  box-shadow: 0 -1px 6px rgba(16,21,27,.05);
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
@@ -664,7 +683,7 @@ a.card:active { background: var(--surface-2); }
   color: var(--text-faint);
 }
 .scorechip .sc-status.final { color: var(--text-dim); }
-.scorechip .sc-status.gotw { color: var(--gold); }
+.scorechip .sc-status.gotw { color: var(--gold); font-weight: 800; }
 
 /* ---------- Desktop (≥900px) ----------
    Same app, computer-shaped: the tab bar leaves the bottom of the screen and
@@ -691,9 +710,9 @@ a.card:active { background: var(--surface-2); }
     border-radius: 0;
   }
   .tab svg { width: 16px; height: 16px; }
-  .tab.active { background: none; color: #fff; box-shadow: inset 0 -3px 0 var(--red-bright); }
+  .tab.active { background: none; color: var(--text); box-shadow: inset 0 -3px 0 var(--red-bright); }
   .tab:hover { color: var(--text-dim); }
-  .tab.active:hover { color: #fff; }
+  .tab.active:hover { color: var(--text); }
   .view { order: 3; width: 100%; max-width: 1060px; padding: 22px 28px 40px; }
 
   .games-grid, .leaders-grid, .standings-grid, .trade-sides { grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -714,7 +733,7 @@ a.card:active { background: var(--surface-2); }
   .news-disclaimer { max-width: 620px; margin-left: auto; margin-right: auto; }
 
   a.card { transition: border-color .15s ease, transform .15s ease; }
-  a.card:hover { border-color: #354355; transform: translateY(-1px); }
+  a.card:hover { border-color: #b9c0c8; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16,21,27,.1); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
