@@ -697,7 +697,7 @@ a.card:active { background: var(--surface-2); }
   .view { order: 3; width: 100%; max-width: 1060px; padding: 22px 28px 40px; }
 
   .games-grid, .leaders-grid, .standings-grid, .trade-sides { grid-template-columns: 1fr 1fr; gap: 12px; }
-  .front { display: grid; grid-template-columns: 1.85fr 1fr; gap: 20px; align-items: start; }
+  .front.has-rail { display: grid; grid-template-columns: 1.85fr 1fr; gap: 20px; align-items: start; }
   .front-rail { margin-top: 0; }
   .hero { margin-top: 10px; }
   .hero-face { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 22px 10px; }

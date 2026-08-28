@@ -348,7 +348,7 @@ function renderHome(view) {
   }
 
   page.appendChild(main);
-  if (rail.childNodes.length) page.appendChild(rail);
+  if (rail.childNodes.length) { page.appendChild(rail); page.classList.add("has-rail"); }
   view.appendChild(page);
 }
 
