@@ -1965,16 +1965,21 @@ window.addEventListener("popstate", () => {
 
 function render() {
   const view = document.getElementById("view");
-  const keepScroll = lastRenderedTab === activeTab;
+  // keepScroll must compare against the CURRENT view's key, not the tab name —
+  // a team page's key is "team-<id>" while activeTab stays "teams", so comparing
+  // to activeTab made every re-render on a team page (roster sort, draft-board
+  // tap) read as a page change and teleport the user to the top.
+  const viewKey = viewDraftHq ? "draft-hq" : viewTeamId != null ? "team-" + viewTeamId : activeTab;
+  const keepScroll = lastRenderedTab === viewKey;
   const y = window.scrollY;
   view.replaceChildren();
   if (!DATA) { view.appendChild(el("div", "loading", "Loading league data…")); return; }
-  if (viewDraftHq) { renderDraftHq(view); lastRenderedTab = "draft-hq"; window.scrollTo(0, keepScroll ? y : 0); return; }
-  if (viewTeamId != null) { renderTeam(view, viewTeamId); lastRenderedTab = "team-" + viewTeamId; window.scrollTo(0, keepScroll ? y : 0); return; }
+  if (viewDraftHq) { renderDraftHq(view); lastRenderedTab = viewKey; window.scrollTo(0, keepScroll ? y : 0); return; }
+  if (viewTeamId != null) { renderTeam(view, viewTeamId); lastRenderedTab = viewKey; window.scrollTo(0, keepScroll ? y : 0); return; }
   RENDERERS[activeTab](view);
-  lastRenderedTab = activeTab;
-  // Re-rendering the SAME tab (the trade builder does this on every tap) keeps the
-  // scroll position; switching tabs starts at the top like a page change should.
+  lastRenderedTab = viewKey;
+  // Re-rendering the SAME view (the trade builder does this on every tap) keeps the
+  // scroll position; switching views starts at the top like a page change should.
   window.scrollTo(0, keepScroll ? y : 0);
 }
 
