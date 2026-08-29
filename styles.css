@@ -102,6 +102,16 @@ body::before {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
+.brand { display: flex; align-items: center; }
+/* The crest tucks into the slash notch — overlapping the wordmark's clipped
+   corner reads as one broadcast lockup instead of a logo floating on the bar. */
+.topbar-crest {
+  height: 40px; width: auto;
+  margin-left: -16px;
+  margin-top: env(safe-area-inset-top);
+  position: relative; z-index: 1;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.55));
+}
 .week-chip {
   font-family: "Archivo", sans-serif; font-style: italic;
   font-size: 12px; font-weight: 800; font-stretch: 85%;
