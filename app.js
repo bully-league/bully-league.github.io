@@ -154,6 +154,11 @@ const DISCORD_PATH = "M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.2a18 18 0 0 0-5.5 0
 
 /* ---------- Player card: tap any player anywhere ---------- */
 
+function fmtHeight(inches) {
+  if (!inches || !isFinite(inches)) return null;
+  return `${Math.floor(inches / 12)}'${inches % 12}\"`;
+}
+
 function playerById(id) {
   for (const [teamId, roster] of Object.entries(DATA.rosters || {})) {
     const p = roster.find((x) => x.id === id);
@@ -207,7 +212,7 @@ function openPlayerCard(id) {
   const who = el("div", "pcard-who");
   who.appendChild(el("div", "pcard-name display", p.name));
   const devBadge = el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—");
-  const sub = el("div", "pcard-sub", [p.pos, `${p.age} yrs`, p.yrs != null ? `${p.yrs} yrs pro` : null].filter(Boolean).join(" · ") + " ");
+  const sub = el("div", "pcard-sub", [p.pos, `${p.age} yrs`, fmtHeight(p.ht), p.wt ? `${p.wt} lbs` : null, p.yrs != null ? `${p.yrs} yrs pro` : null].filter(Boolean).join(" · ") + " ");
   sub.appendChild(devBadge);
   who.appendChild(sub);
   const teamLine = el("div", "pcard-team");
@@ -230,11 +235,29 @@ function openPlayerCard(id) {
   };
   chips.appendChild(chip("OVR", p.ovr));
   if (p.value != null) chips.appendChild(chip("Trade value", p.value.toLocaleString()));
-  if (fmtMoney(p.salary)) chips.appendChild(chip("Salary", fmtMoney(p.salary)));
-  if (fmtMoney(p.capHit)) chips.appendChild(chip("Cap hit", fmtMoney(p.capHit)));
-  if (p.yrsLeft != null && p.yrsLeft > 0) chips.appendChild(chip("Contract yrs", p.yrsLeft));
   if (p.inj) chips.appendChild(chip("🩹 Out", p.inj + " wks"));
   card.appendChild(chips);
+
+  // Contract breakdown — rostered players only (EA zeroes free agents' asks until
+  // the in-season negotiation window, so an FA "contract" would be fiction).
+  if (fmtMoney(p.salary)) {
+    const sec = el("div", "pcard-sec");
+    sec.appendChild(el("div", "need-depth-label", "Contract"));
+    const row = (label, txt) => {
+      const d = el("div", "pcard-stat");
+      d.appendChild(el("strong", null, label));
+      d.appendChild(document.createTextNode(" " + txt));
+      return d;
+    };
+    sec.appendChild(row("Deal", `${fmtMoney(p.salary)}/yr` + (fmtMoney(p.bonus) ? ` · ${fmtMoney(p.bonus)} bonus` : "")));
+    if (p.len && p.yrsLeft != null) sec.appendChild(row("Term", `year ${Math.max(1, p.len - p.yrsLeft + 1)} of ${p.len} · ${p.yrsLeft} yr(s) left`));
+    else if (p.yrsLeft != null) sec.appendChild(row("Term", `${p.yrsLeft} yr(s) left`));
+    if (fmtMoney(p.capHit)) sec.appendChild(row("Cap hit", fmtMoney(p.capHit)));
+    if (p.penalty != null || p.savings != null) {
+      sec.appendChild(row("If cut", `${fmtMoney(p.penalty) ?? "$0"} dead cap · frees ${fmtMoney(p.savings) ?? "$0"}`));
+    }
+    card.appendChild(sec);
+  }
 
   // Fit advisement — only meaningful for a free agent while a team is picked.
   if (teamId == null && faView.teamId) {
