@@ -1848,7 +1848,7 @@ function renderTeams(view) {
 
 /* ---------- Player lookup ---------- */
 
-const playerSearch = { q: "", pos: "" }; // transient, survives re-renders
+const playerSearch = { q: "", pos: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false }; // transient, survives re-renders
 const POS_FILTERS = ["QB", "HB", "WR", "TE", "OL", "EDGE", "DT", "LB", "CB", "S", "K/P"];
 const POS_GROUPS = {
   OL: ["LT", "LG", "C", "RG", "RT", "LS"],
@@ -1857,16 +1857,34 @@ const POS_GROUPS = {
   S: ["SS", "FS"],
   "K/P": ["K", "P"],
 };
+// The Players tab's position filters map onto the same rating-column sets the FA
+// grid uses (its keys are the draft groups — HB lives under RB there, K/P under
+// Specialists).
+const POS_FILTER_TO_RATING_GROUP = {
+  "": "", QB: "QB", HB: "RB", WR: "WR", TE: "TE", OL: "OL",
+  EDGE: "EDGE", DT: "DT", LB: "LB", CB: "CB", S: "S", "K/P": "Specialists",
+};
 
 function renderPlayers(view) {
-  view.appendChild(sectionHead("Players", "every rostered player in the league"));
+  view.appendChild(sectionHead("Players", "every rostered player · every column sorts"));
 
   const search = el("input", "roster-search");
   search.type = "search";
   search.placeholder = "Search by name…";
   search.value = playerSearch.q;
-  search.addEventListener("input", () => { playerSearch.q = search.value; renderResults(); });
+  // Partial re-render on input (same as FA): a full render() would replace the
+  // input mid-keystroke and drop focus. Re-chunking keeps keystrokes bounded.
+  search.addEventListener("input", () => { playerSearch.q = search.value; playerSearch.showAll = false; renderResults(); });
   view.appendChild(search);
+
+  function currentRatingCols() {
+    return playerSearch.showAllCols
+      ? Object.keys(RATING_NAMES)
+      : (GROUP_RATING_COLS[POS_FILTER_TO_RATING_GROUP[playerSearch.pos] ?? ""] || GROUP_RATING_COLS[""]);
+  }
+  function resetSortIfHidden() {
+    if (RATING_NAMES[playerSearch.sort.col] && !currentRatingCols().includes(playerSearch.sort.col)) playerSearch.sort = { col: "ovr", dir: -1 };
+  }
 
   const pills = el("div", "week-pills");
   for (const pos of POS_FILTERS) {
@@ -1874,18 +1892,18 @@ function renderPlayers(view) {
     pill.type = "button";
     pill.addEventListener("click", () => {
       playerSearch.pos = playerSearch.pos === pos ? "" : pos;
-      render();
+      playerSearch.showAllCols = false;
+      playerSearch.showAll = false;
+      resetSortIfHidden();
+      for (const b of pills.children) b.classList.toggle("active", b.textContent === playerSearch.pos);
+      renderResults();
     });
     pills.appendChild(pill);
   }
   view.appendChild(pills);
 
-  const card = el("div", "card");
-  const list = el("div");
-  card.appendChild(list);
-  view.appendChild(card);
-  const foot = el("div", "news-disclaimer");
-  view.appendChild(foot);
+  const gridWrap = el("div");
+  view.appendChild(gridWrap);
 
   function matchesPos(p) {
     if (!playerSearch.pos) return true;
@@ -1894,6 +1912,10 @@ function renderPlayers(view) {
   }
 
   function renderResults() {
+    // Same scroll guard as the FA grid — a sort/filter tap must never jump the page.
+    const y = window.scrollY;
+    gridWrap.replaceChildren();
+
     const q = playerSearch.q.trim().toLowerCase();
     const rows = [];
     for (const [teamId, roster] of Object.entries(DATA.rosters || {})) {
@@ -1903,26 +1925,94 @@ function renderPlayers(view) {
         rows.push({ ...p, teamId: Number(teamId) });
       }
     }
-    rows.sort((a, b) => b.ovr - a.ovr || b.value - a.value);
-    const shown = rows.slice(0, 50);
-    list.replaceChildren();
-    for (const p of shown) {
-      const r = el("button", "player-row");
-      r.type = "button";
-      r.addEventListener("click", () => openPlayerCard(p.id));
-      r.appendChild(avatar({ name: p.name, teamId: p.teamId, portraitId: p.portraitId }));
-      const who = el("div", "wire-who");
-      who.appendChild(el("div", "wire-name", p.name));
-      who.appendChild(el("div", "wire-sub", `${p.pos} · ${team(p.teamId).nick} · ${p.age} yrs`));
-      r.appendChild(who);
-      const devWrap = el("span", "player-dev");
-      devWrap.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
-      r.appendChild(devWrap);
-      r.appendChild(el("span", "player-ovr", String(p.ovr)));
-      list.appendChild(r);
+
+    const ratingCols = currentRatingCols();
+    const cols = [
+      { key: "name", label: "Player", title: "Player", sort: (p) => p.name, asc: true },
+      { key: "pos", label: "POS", title: "Position", sort: (p) => p.pos, asc: true },
+      { key: "team", label: "TEAM", title: "Team", sort: (p) => team(p.teamId).abbr || "", asc: true },
+      { key: "age", label: "AGE", title: "Age", sort: (p) => p.age },
+      { key: "dev", label: "DEV", title: "Dev trait", sort: (p) => DEV_ORDER[p.dev] ?? -1 },
+      { key: "ovr", label: "OVR", title: "Overall", sort: (p) => p.ovr },
+      { key: "value", label: "VALUE", title: "Trade value", sort: (p) => p.value },
+      { key: "sal", label: "SAL", title: "Salary", sort: (p) => p.salary ?? 0 },
+      ...ratingCols.map((k) => ({ key: k, label: k.toUpperCase(), title: RATING_NAMES[k], sort: (p) => (p.rat && p.rat[k] != null ? p.rat[k] : -1) })),
+    ];
+
+    const colDef = cols.find((c) => c.key === playerSearch.sort.col) || cols[5];
+    rows.sort((a, b) => {
+      const va = colDef.sort(a), vb = colDef.sort(b);
+      return (va < vb ? -1 : va > vb ? 1 : 0) * playerSearch.sort.dir || b.ovr - a.ovr;
+    });
+
+    const wrap = el("div", "card table-wrap");
+    const table = el("table", "roster-table fa-table");
+    const thead = el("thead");
+    const headRow = el("tr");
+    for (const col of cols) {
+      const th = el("th", playerSearch.sort.col === col.key ? "sorted" : "");
+      th.textContent = col.label + (playerSearch.sort.col === col.key ? (playerSearch.sort.dir === -1 ? " ▾" : " ▴") : "");
+      th.title = col.title;
+      th.addEventListener("click", () => {
+        if (playerSearch.sort.col === col.key) playerSearch.sort.dir *= -1;
+        else playerSearch.sort = { col: col.key, dir: col.asc ? 1 : -1 };
+        renderResults();
+      });
+      headRow.appendChild(th);
     }
-    if (!shown.length) list.appendChild(el("div", "empty", "No players match."));
-    foot.textContent = rows.length > 50 ? `Showing the top 50 of ${rows.length} matches — narrow the search or tap a position.` : "Tap a player for their full card — ratings, stats, contract. CSV export lives on the team page.";
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = el("tbody");
+    const CHUNK = 120;
+    const shown = playerSearch.showAll ? rows : rows.slice(0, CHUNK);
+    for (const p of shown) {
+      const tr = el("tr", "fa-row row-tappable");
+      tr.addEventListener("click", () => openPlayerCard(p.id));
+      const nameTd = el("td", "rt-name");
+      nameTd.appendChild(avatar({ name: p.name, teamId: p.teamId, portraitId: p.portraitId }));
+      nameTd.appendChild(el("span", null, p.name));
+      tr.appendChild(nameTd);
+      tr.appendChild(el("td", null, p.pos));
+      const teamTd = el("td", "fa-team-cell");
+      teamTd.appendChild(logoImg(team(p.teamId).abbr, "fa-team-logo"));
+      teamTd.appendChild(el("span", null, team(p.teamId).abbr || "—"));
+      tr.appendChild(teamTd);
+      tr.appendChild(el("td", "rt-num", String(p.age ?? "—")));
+      const devTd = el("td");
+      devTd.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
+      tr.appendChild(devTd);
+      tr.appendChild(el("td", "rt-num", String(p.ovr)));
+      tr.appendChild(el("td", "rt-num", p.value.toLocaleString()));
+      tr.appendChild(el("td", "rt-num", fmtMoney(p.salary) || "—"));
+      for (const k of ratingCols) {
+        const v = p.rat && p.rat[k] != null ? p.rat[k] : null;
+        const cls = v == null ? "rt-num" : v >= 90 ? "rt-num rt-hi" : v >= 80 ? "rt-num rt-good" : v < 70 ? "rt-num rt-low" : "rt-num";
+        tr.appendChild(el("td", cls, v == null ? "—" : String(v)));
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    if (!rows.length) wrap.appendChild(el("div", "empty", "No players match."));
+    gridWrap.appendChild(wrap);
+
+    if (!playerSearch.showAll && rows.length > CHUNK) {
+      const more = el("button", "trade-cta fa-more", `Show all ${rows.length} players`);
+      more.type = "button";
+      more.addEventListener("click", () => { playerSearch.showAll = true; renderResults(); });
+      gridWrap.appendChild(more);
+    }
+    const colsBtn = el("button", "csv-all-link fa-cols-toggle", playerSearch.showAllCols ? "Show position-relevant columns" : "+ Show ALL 37 rating columns");
+    colsBtn.type = "button";
+    colsBtn.addEventListener("click", () => {
+      playerSearch.showAllCols = !playerSearch.showAllCols;
+      resetSortIfHidden();
+      renderResults();
+    });
+    gridWrap.appendChild(colsBtn);
+    gridWrap.appendChild(el("div", "news-disclaimer", "Tap a player for their full card — ratings, stats, contract. Columns default to what scouts weigh for the position; CSV export lives on the team page."));
+    window.scrollTo(0, y);
   }
   renderResults();
 }
