@@ -985,19 +985,67 @@ function renderTeam(view, teamId) {
     view.appendChild(logCard);
   }
 
-  // Draft Board — the needs engine's top targets for this team
+  // Draft Board — every position group, tappable: score meter, the engine's full
+  // reasoning, and that group's actual depth chart.
   const needs = (DATA.needs && DATA.needs[String(teamId)]) || [];
   if (needs.length) {
-    view.appendChild(sectionHead("Draft Board", "positions to target"));
+    view.appendChild(sectionHead("Draft Board", "tap a position for the full picture"));
+
+    const sorts = el("div", "week-pills");
+    for (const [key, label] of [["need", "By need"], ["pos", "By position"]]) {
+      const pill = el("button", "week-pill" + (needsView.sort === key ? " active" : ""), label);
+      pill.type = "button";
+      pill.addEventListener("click", () => { needsView.sort = key; render(); });
+      sorts.appendChild(pill);
+    }
+    view.appendChild(sorts);
+
+    const POS_ORDER = ["QB", "RB", "WR", "TE", "OL", "EDGE", "DT", "LB", "CB", "S", "Specialists"];
+    const list = needsView.sort === "pos" ? [...needs].sort((a, b) => POS_ORDER.indexOf(a.label) - POS_ORDER.indexOf(b.label)) : needs;
+
     const needCard = el("div", "card");
-    for (const n of needs) {
-      const r = el("div", "need-row");
+    const maxScore = 40;
+    for (const n of list) {
+      const isOpen = needsView.open === n.label;
+      const r = el("button", "need-row" + (isOpen ? " open" : ""));
+      r.type = "button";
+      r.addEventListener("click", () => { needsView.open = isOpen ? null : n.label; render(); });
+
       const head = el("div", "need-head");
       head.appendChild(el("span", "need-pos", n.label));
       head.appendChild(el("span", "need-level lv-" + n.level.toLowerCase(), n.level));
       head.appendChild(el("span", "need-starter", n.starter ? `${n.starter.name} · ${n.starter.ovr} OVR` : "nobody rostered"));
+      head.appendChild(el("span", "need-caret", isOpen ? "▴" : "▾"));
       r.appendChild(head);
-      if (n.reason && n.level !== "SOLID") r.appendChild(el("div", "need-reason", n.reason));
+
+      const meter = el("div", "need-meter");
+      const fill = el("div", "need-meter-fill lv-" + n.level.toLowerCase());
+      fill.style.width = Math.min(100, Math.round(((n.score || 0) / maxScore) * 100)) + "%";
+      meter.appendChild(fill);
+      r.appendChild(meter);
+
+      if (isOpen) {
+        const detail = el("div", "need-detail");
+        for (const reason of n.reasons || []) detail.appendChild(el("div", "need-reason", "• " + reason));
+        if ((n.depth || []).length) {
+          detail.appendChild(el("div", "need-depth-label", "Depth chart"));
+          n.depth.forEach((p, i) => {
+            const d = el("div", "need-depth-row");
+            d.appendChild(el("span", "pos-num", String(i + 1)));
+            d.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
+            d.appendChild(el("span", "wire-name", p.name));
+            d.appendChild(el("span", "wire-sub", `${p.pos} · ${p.age} yrs`));
+            const devWrap = el("span", "player-dev");
+            devWrap.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
+            d.appendChild(devWrap);
+            d.appendChild(el("span", "player-ovr", String(p.ovr)));
+            detail.appendChild(d);
+          });
+        } else {
+          detail.appendChild(el("div", "need-reason", "Nobody rostered at this group."));
+        }
+        r.appendChild(detail);
+      }
       needCard.appendChild(r);
     }
     view.appendChild(needCard);
@@ -1167,11 +1215,13 @@ let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
 const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
+const needsView = { sort: "need", open: null }; // draft board: sort mode + which group is expanded
 let scoreWeek = null; // "stage-week" key of a past week being browsed on Home, null = current week
 let expandedGame = null; // scheduleId of the game card expanded into its matchup panel
 
 function openTeam(teamId) {
   viewTeamId = teamId;
+  needsView.open = null;
   try { history.pushState({ team: teamId }, "", "#team-" + teamId); } catch {}
   render();
 }
