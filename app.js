@@ -152,10 +152,58 @@ function timeAgo(iso) {
 
 const DISCORD_PATH = "M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.2a18 18 0 0 0-5.5 0L8.6 3a19.8 19.8 0 0 0-4.9 1.5A20.4 20.4 0 0 0 .2 18.1a19.9 19.9 0 0 0 6 3l1.2-2a12.9 12.9 0 0 1-2-.9l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4a12.9 12.9 0 0 1-2 .9l1.2 2a19.9 19.9 0 0 0 6-3A20.4 20.4 0 0 0 20.3 4.4ZM8 14.7c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm8 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z";
 
+/* Side-by-side matchup panel (tale of the tape) shown when a game card is tapped. */
+function matchupPanel(g, away, home) {
+  const panel = el("div", "matchup-panel");
+  const sA = (DATA.standings || []).find((s) => s.teamId === g.awayTeamId);
+  const sB = (DATA.standings || []).find((s) => s.teamId === g.homeTeamId);
+  const rA = (DATA.rankings || []).find((r) => r.teamId === g.awayTeamId);
+  const rB = (DATA.rankings || []).find((r) => r.teamId === g.homeTeamId);
+
+  const rows = [
+    { label: "Record", a: record(g.awayTeamId) || "—", b: record(g.homeTeamId) || "—", betterA: sA && sB ? sA.wins - sA.losses > sB.wins - sB.losses : null },
+    { label: "Team OVR", a: away.ovr ?? "—", b: home.ovr ?? "—", betterA: (away.ovr ?? 0) > (home.ovr ?? 0) },
+    { label: "Power Rank", a: rA ? "#" + rA.rank : "—", b: rB ? "#" + rB.rank : "—", betterA: rA && rB ? rA.rank < rB.rank : null },
+    { label: "PPG", a: sA?.ptsFor ?? "—", b: sB?.ptsFor ?? "—", betterA: (sA?.ptsFor ?? 0) > (sB?.ptsFor ?? 0) },
+    { label: "PA/G", a: sA?.ptsAgainst ?? "—", b: sB?.ptsAgainst ?? "—", betterA: (sA?.ptsAgainst ?? 99) < (sB?.ptsAgainst ?? 99) },
+  ];
+  for (const row of rows) {
+    if (row.a === row.b) row.betterA = null;
+    const r = el("div", "tape-row");
+    r.appendChild(el("span", "tape-val" + (row.betterA === true ? " better" : ""), String(row.a)));
+    r.appendChild(el("span", "tape-label", row.label));
+    r.appendChild(el("span", "tape-val right" + (row.betterA === false ? " better" : ""), String(row.b)));
+    panel.appendChild(r);
+  }
+
+  // Earlier meeting this season, from the recorded history
+  for (const w of DATA.history || []) {
+    for (const h of w.games) {
+      if (h.kind !== "played") continue;
+      const same = (h.awayTeamId === g.awayTeamId && h.homeTeamId === g.homeTeamId) || (h.awayTeamId === g.homeTeamId && h.homeTeamId === g.awayTeamId);
+      if (same && !(g.played && h.awayScore === g.awayScore && h.homeScore === g.homeScore && h.awayTeamId === g.awayTeamId)) {
+        panel.appendChild(el("div", "tape-h2h", `Earlier this season (${w.label}): ${team(h.awayTeamId).abbr} ${h.awayScore} — ${h.homeScore} ${team(h.homeTeamId).abbr}`));
+      }
+    }
+  }
+
+  if (g.channelUrl && !g.played) {
+    const cta = el("a", "matchup-cta", "Open game channel →");
+    cta.href = g.channelUrl;
+    cta.target = "_blank";
+    cta.rel = "noopener";
+    cta.addEventListener("click", (e) => e.stopPropagation());
+    panel.appendChild(cta);
+  }
+  return panel;
+}
+
 function gameCard(g) {
-  const isLink = Boolean(g.channelUrl);
-  const card = el(isLink ? "a" : "div", "card" + (g.isGotw ? " gotw" : ""));
-  if (isLink) { card.href = g.channelUrl; card.target = "_blank"; card.rel = "noopener"; }
+  const card = el("div", "card game-toggle" + (g.isGotw ? " gotw" : ""));
+  card.addEventListener("click", () => {
+    expandedGame = expandedGame === g.scheduleId ? null : g.scheduleId;
+    render();
+  });
 
   const away = team(g.awayTeamId), home = team(g.homeTeamId);
 
@@ -200,14 +248,10 @@ function gameCard(g) {
   else if (g.forced === "fairSim") meta.appendChild(el("span", "chip fairsim", "Fair Sim"));
   else if (g.played) meta.appendChild(el("span", "chip final", "Final"));
   else meta.appendChild(el("span", "chip live", "Scheduled"));
-  if (isLink) {
-    const link = el("span", "discord-link");
-    link.appendChild(svgIcon(DISCORD_PATH));
-    link.appendChild(document.createTextNode("Game channel"));
-    meta.appendChild(link);
-  }
+  meta.appendChild(el("span", "expand-hint", expandedGame === g.scheduleId ? "Hide matchup ▴" : "Matchup ▾"));
   body.appendChild(meta);
   card.appendChild(body);
+  if (expandedGame === g.scheduleId) card.appendChild(matchupPanel(g, away, home));
   return card;
 }
 
@@ -998,14 +1042,115 @@ function renderTeam(view, teamId) {
   view.appendChild(el("div", "news-disclaimer", "Full attributes, contracts, and every rating are in the CSV export above."));
 }
 
+/* ---------- Teams directory ---------- */
+
+function renderTeams(view) {
+  view.appendChild(sectionHead("Teams", "tap a team for roster, results & CSV"));
+  const grid = el("div", "teams-grid");
+  const sorted = [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick));
+  for (const t of sorted) {
+    const card = el("button", "team-card");
+    card.type = "button";
+    card.style.setProperty("--tc", railColor(t.abbr));
+    card.addEventListener("click", () => openTeam(t.teamId));
+    card.appendChild(logoImg(t.abbr, "team-card-logo"));
+    card.appendChild(el("div", "team-card-nick", t.nick));
+    card.appendChild(el("div", "team-card-sub", `${record(t.teamId) || "—"}${t.owner ? " · " + t.owner : ""}`));
+    grid.appendChild(card);
+  }
+  view.appendChild(grid);
+}
+
+/* ---------- Player lookup ---------- */
+
+const playerSearch = { q: "", pos: "" }; // transient, survives re-renders
+const POS_FILTERS = ["QB", "HB", "WR", "TE", "OL", "EDGE", "DT", "LB", "CB", "S", "K/P"];
+const POS_GROUPS = {
+  OL: ["LT", "LG", "C", "RG", "RT", "LS"],
+  EDGE: ["LEDG", "REDG"],
+  LB: ["MIKE", "WILL", "SAM"],
+  S: ["SS", "FS"],
+  "K/P": ["K", "P"],
+};
+
+function renderPlayers(view) {
+  view.appendChild(sectionHead("Players", "every rostered player in the league"));
+
+  const search = el("input", "roster-search");
+  search.type = "search";
+  search.placeholder = "Search by name…";
+  search.value = playerSearch.q;
+  search.addEventListener("input", () => { playerSearch.q = search.value; renderResults(); });
+  view.appendChild(search);
+
+  const pills = el("div", "week-pills");
+  for (const pos of POS_FILTERS) {
+    const pill = el("button", "week-pill" + (playerSearch.pos === pos ? " active" : ""), pos);
+    pill.type = "button";
+    pill.addEventListener("click", () => {
+      playerSearch.pos = playerSearch.pos === pos ? "" : pos;
+      render();
+    });
+    pills.appendChild(pill);
+  }
+  view.appendChild(pills);
+
+  const card = el("div", "card");
+  const list = el("div");
+  card.appendChild(list);
+  view.appendChild(card);
+  const foot = el("div", "news-disclaimer");
+  view.appendChild(foot);
+
+  function matchesPos(p) {
+    if (!playerSearch.pos) return true;
+    const group = POS_GROUPS[playerSearch.pos];
+    return group ? group.includes(p.pos) : p.pos === playerSearch.pos;
+  }
+
+  function renderResults() {
+    const q = playerSearch.q.trim().toLowerCase();
+    const rows = [];
+    for (const [teamId, roster] of Object.entries(DATA.rosters || {})) {
+      for (const p of roster) {
+        if (!matchesPos(p)) continue;
+        if (q && !p.name.toLowerCase().includes(q)) continue;
+        rows.push({ ...p, teamId: Number(teamId) });
+      }
+    }
+    rows.sort((a, b) => b.ovr - a.ovr || b.value - a.value);
+    const shown = rows.slice(0, 50);
+    list.replaceChildren();
+    for (const p of shown) {
+      const r = el("button", "player-row");
+      r.type = "button";
+      r.addEventListener("click", () => openTeam(p.teamId));
+      r.appendChild(avatar({ name: p.name, teamId: p.teamId, portraitId: p.portraitId }));
+      const who = el("div", "wire-who");
+      who.appendChild(el("div", "wire-name", p.name));
+      who.appendChild(el("div", "wire-sub", `${p.pos} · ${team(p.teamId).nick} · ${p.age} yrs`));
+      r.appendChild(who);
+      const devWrap = el("span", "player-dev");
+      devWrap.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
+      r.appendChild(devWrap);
+      r.appendChild(el("span", "player-ovr", String(p.ovr)));
+      list.appendChild(r);
+    }
+    if (!shown.length) list.appendChild(el("div", "empty", "No players match."));
+    foot.textContent = rows.length > 50 ? `Showing the top 50 of ${rows.length} matches — narrow the search or tap a position.` : "Tap a player to open their team page. Full attributes are in the team CSV export.";
+  }
+  renderResults();
+}
+
 /* ---------- App shell ---------- */
 
-const RENDERERS = { home: renderHome, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
+const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
 let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
 const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
 let scoreWeek = null; // "stage-week" key of a past week being browsed on Home, null = current week
+let expandedGame = null; // scheduleId of the game card expanded into its matchup panel
 
 function openTeam(teamId) {
   viewTeamId = teamId;
