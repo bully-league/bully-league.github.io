@@ -1529,7 +1529,7 @@ for (const [g, positions] of Object.entries(DRAFT_GROUP_POS)) for (const p of po
 // Legacy Madden position codes (pre-M27 snapshots) map onto the same groups.
 Object.assign(POS_TO_GROUP, { LOLB: "EDGE", ROLB: "EDGE", MLB: "LB", LE: "EDGE", RE: "EDGE", LEDGE: "EDGE", REDGE: "EDGE" });
 
-const faView = { teamId: null, pos: "", q: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false };
+const faView = { teamId: null, mode: "now", pos: "", q: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false };
 try { faView.teamId = Number(localStorage.getItem("fa-team")) || null; } catch {}
 
 /* Madden-standard rating abbreviations. Full names feed th tooltips. */
@@ -1602,8 +1602,38 @@ function fitFor(fa, teamId) {
 }
 
 function renderFreeAgents(view) {
-  const pool = DATA.freeAgents || [];
-  view.appendChild(sectionHead("Free Agents", `all ${pool.length} players · every column sorts`));
+  const nowPool = DATA.freeAgents || [];
+  // The UPCOMING class: every rostered player in the final year of his contract —
+  // next offseason's market, scouted with the exact same grid. Final year is
+  // yrsLeft === 1, verified against real synced data: EVERY yrsLeft === 0 player
+  // is practice squad (360-for-360 overlap, all with $0 contracts), and the bot's
+  // draft/contract logic already treats <= 1 as heading to free agency. Derived
+  // fully client-side from the rosters, which carry ratings, contracts, and value.
+  const upcomingPool = [];
+  for (const [tid, roster] of Object.entries(DATA.rosters || {})) {
+    for (const p of roster) if (p.yrsLeft === 1) upcomingPool.push({ ...p, teamId: Number(tid) });
+  }
+  const upcoming = faView.mode === "upcoming";
+  const pool = upcoming ? upcomingPool : nowPool;
+  view.appendChild(sectionHead("Free Agents", upcoming
+    ? `${pool.length} contracts expire after this season`
+    : `all ${pool.length} players · every column sorts`));
+
+  const modePills = el("div", "week-pills");
+  for (const [key, label] of [["now", `Free now (${nowPool.length})`], ["upcoming", `Upcoming class (${upcomingPool.length})`]]) {
+    const pill = el("button", "week-pill" + ((faView.mode === key || (!faView.mode && key === "now")) ? " active" : ""), label);
+    pill.type = "button";
+    pill.addEventListener("click", () => {
+      faView.mode = key;
+      faView.showAll = false;
+      // TEAM/SAL columns only exist in upcoming mode — don't leave a sort
+      // pointing at a column the other mode doesn't render.
+      if (key === "now" && (faView.sort.col === "team" || faView.sort.col === "sal")) faView.sort = { col: "ovr", dir: -1 };
+      render();
+    });
+    modePills.appendChild(pill);
+  }
+  view.appendChild(modePills);
 
   // Controls: search + optional advise-as team + position pills. The team pick
   // only ADDS a Fit column — it never gates or trims the list.
@@ -1679,19 +1709,24 @@ function renderFreeAgents(view) {
     }
 
     const q = faView.q.trim().toLowerCase();
+    // An expiring player already on the advised roster isn't a signing target —
+    // he's a re-sign decision. Label him instead of scoring him against himself.
+    const YOURS = { score: -1, verdict: "YOURS", reasons: [] };
     const scored = pool
       .filter((p) => !faView.pos || (DRAFT_GROUP_POS[faView.pos] || []).includes(p.pos))
       .filter((p) => !q || p.name.toLowerCase().includes(q))
-      .map((p) => (faView.teamId ? { ...p, fit: fitFor(p, faView.teamId) } : p));
+      .map((p) => (faView.teamId ? { ...p, fit: p.teamId === faView.teamId ? YOURS : fitFor(p, faView.teamId) } : p));
 
     const ratingCols = currentRatingCols();
     const cols = [
       { key: "name", label: "Player", title: "Player", sort: (p) => p.name, asc: true },
       { key: "pos", label: "POS", title: "Position", sort: (p) => p.pos, asc: true },
+      ...(upcoming ? [{ key: "team", label: "TEAM", title: "Current team", sort: (p) => team(p.teamId).abbr || "", asc: true }] : []),
       { key: "age", label: "AGE", title: "Age", sort: (p) => p.age },
       { key: "dev", label: "DEV", title: "Dev trait", sort: (p) => DEV_ORDER[p.dev] ?? -1 },
       { key: "ovr", label: "OVR", title: "Overall", sort: (p) => p.ovr },
       { key: "value", label: "VALUE", title: "Trade value", sort: (p) => p.value },
+      ...(upcoming ? [{ key: "sal", label: "SAL", title: "Current salary (EA hides re-sign asks until the negotiation window)", sort: (p) => p.salary ?? 0 }] : []),
       ...(faView.teamId ? [{ key: "fit", label: "FIT", title: "Fit for your roster (tap row for why)", sort: (p) => p.fit.score }] : []),
       ...ratingCols.map((k) => ({ key: k, label: k.toUpperCase(), title: RATING_NAMES[k], sort: (p) => (p.rat && p.rat[k] != null ? p.rat[k] : -1) })),
     ];
@@ -1727,16 +1762,23 @@ function renderFreeAgents(view) {
       const tr = el("tr", "fa-row row-tappable");
       tr.addEventListener("click", () => openPlayerCard(p.id));
       const nameTd = el("td", "rt-name");
-      nameTd.appendChild(avatar({ name: p.name, teamId: -1, portraitId: p.portraitId }));
+      nameTd.appendChild(avatar({ name: p.name, teamId: upcoming ? p.teamId : -1, portraitId: p.portraitId }));
       nameTd.appendChild(el("span", null, p.name));
       tr.appendChild(nameTd);
       tr.appendChild(el("td", null, p.pos));
+      if (upcoming) {
+        const teamTd = el("td", "fa-team-cell");
+        teamTd.appendChild(logoImg(team(p.teamId).abbr, "fa-team-logo"));
+        teamTd.appendChild(el("span", null, team(p.teamId).abbr || "—"));
+        tr.appendChild(teamTd);
+      }
       tr.appendChild(el("td", "rt-num", String(p.age ?? "—")));
       const devTd = el("td");
       devTd.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
       tr.appendChild(devTd);
       tr.appendChild(el("td", "rt-num", String(p.ovr)));
       tr.appendChild(el("td", "rt-num", p.value.toLocaleString()));
+      if (upcoming) tr.appendChild(el("td", "rt-num", fmtMoney(p.salary) || "—"));
       if (faView.teamId) {
         const fitTd = el("td");
         fitTd.appendChild(el("span", "fit-badge fit-" + p.fit.verdict.toLowerCase().replace(/[^a-z]/g, ""), p.fit.verdict));
@@ -1768,7 +1810,9 @@ function renderFreeAgents(view) {
       renderGrid();
     });
     gridWrap.appendChild(colsBtn);
-    gridWrap.appendChild(el("div", "news-disclaimer", "Columns default to what scouts weigh for the position — sort by any of them, or open all 37. Fit is advisement (need + starter comparison + upside from real synced data); it never hides a player. EA's export has no personality, scheme, or formation data, so nothing here pretends to."));
+    gridWrap.appendChild(el("div", "news-disclaimer", upcoming
+      ? "Upcoming = final contract year, hitting the market next offseason unless re-signed. SAL is the CURRENT salary — EA doesn't reveal re-sign asks until the in-season negotiation window, so nothing here pretends to know the price. Fit scores them as next year's signing (YOURS = already on your roster: a re-sign call, not a target)."
+      : "Columns default to what scouts weigh for the position — sort by any of them, or open all 37. Fit is advisement (need + starter comparison + upside from real synced data); it never hides a player. EA's export has no personality, scheme, or formation data, so nothing here pretends to."));
   }
 
   renderGrid();
