@@ -51,6 +51,21 @@ body::before {
     repeating-linear-gradient(115deg, transparent 0 22px, rgba(16,21,27,.008) 22px 24px);
   animation: field-drift 90s linear infinite alternate;
 }
+/* The crest as a ghosted broadcast watermark — same negative-z fixed-layer trick
+   as the yard-line texture, so it sits above the page ground but under every
+   card and line of text. Opacity is the whole readability story: at .045 it
+   reads as a mark on the desk, not content. iOS-safe (a fixed pseudo-element,
+   not background-attachment: fixed, which iOS Safari ignores). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url(logo/crest-640.png) no-repeat center 44% / min(78vmin, 560px);
+  opacity: .045;
+}
+
 @keyframes field-drift {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(-120px, -56px, 0); }
@@ -101,16 +116,6 @@ body::before {
   letter-spacing: .01em; margin-top: 2px;
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,.4);
-}
-.brand { display: flex; align-items: center; }
-/* The crest tucks into the slash notch — overlapping the wordmark's clipped
-   corner reads as one broadcast lockup instead of a logo floating on the bar. */
-.topbar-crest {
-  height: 40px; width: auto;
-  margin-left: -16px;
-  margin-top: env(safe-area-inset-top);
-  position: relative; z-index: 1;
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,.55));
 }
 .week-chip {
   font-family: "Archivo", sans-serif; font-style: italic;
@@ -1019,3 +1024,50 @@ a.card:active { background: var(--surface-2); }
   body::before, .wordmark::after, .gotw::after, .hero::after { animation: none; }
   .wordmark::after, .gotw::after, .hero::after { display: none; }
 }
+
+/* ---------- Free-agent grid ---------- */
+.fa-controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.fa-controls .roster-search { flex: 1 1 160px; margin: 0; }
+.fa-controls .team-select { flex: 1 1 180px; margin: 0; }
+.fa-advice {
+  font-family: "Archivo", sans-serif; font-style: italic; font-weight: 800;
+  font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--red); border-left: 3px solid var(--red);
+  padding: 4px 0 4px 10px; margin: 0 0 10px;
+}
+.fa-table th { cursor: pointer; user-select: none; }
+.fa-table .rt-name span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.rt-hi { color: #0a7a2f; }
+.rt-good { color: #1a1d21; }
+.rt-low { color: #9aa1a9; font-weight: 400; }
+.fa-row { cursor: pointer; }
+.fa-row.open td { background: var(--surface-2); }
+.fa-detail-row td { white-space: normal; background: var(--surface-2); padding: 4px 12px 10px; }
+/* Colspan cells span the full (scrolling) table width — pin the reasons to the
+   visible scrollport so they read without a horizontal drag. */
+.fa-detail-inner { position: sticky; left: 12px; max-width: min(520px, calc(100vw - 64px)); }
+.fa-more { margin-bottom: 8px; }
+.fa-cols-toggle { display: block; margin: 0 0 6px; background: none; border: 0; cursor: pointer; padding: 0; }
+
+/* ---------- Team Identity ---------- */
+.id-card { padding: 14px; }
+.id-split { display: flex; align-items: center; gap: 10px; }
+.id-split-label {
+  font-family: "Archivo", sans-serif; font-style: italic; font-weight: 900;
+  font-size: 13px; font-stretch: 80%; letter-spacing: .04em; white-space: nowrap;
+}
+.id-split-bar { flex: 1; height: 14px; background: var(--red); border-radius: 3px; overflow: hidden; display: flex; }
+.id-split-run { background: #1a1d21; height: 100%; }
+.id-split-sub { font-size: 11px; color: var(--text-faint); margin: 5px 0 12px; text-align: center; }
+.id-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.id-cell { background: var(--surface-2); border: 1px solid var(--edge); border-radius: 6px; padding: 8px 6px; text-align: center; }
+.id-cell-val { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
+.id-cell-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); margin-top: 2px; }
+.share-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.share-row .avatar { width: 30px; height: 30px; font-size: 10px; }
+.share-who { flex: 1; min-width: 0; }
+.share-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.share-pct { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 13px; font-variant-numeric: tabular-nums; }
+.share-bar { height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin: 3px 0 2px; }
+.share-bar-fill { height: 100%; background: var(--red); border-radius: 3px; }
+.id-note { margin-top: 8px; }
