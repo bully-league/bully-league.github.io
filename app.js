@@ -932,6 +932,7 @@ function renderTeam(view, teamId) {
     return d;
   };
   chips.appendChild(chip("Team OVR", t.ovr));
+  if (t.grade) chips.appendChild(chip("Roster Grade", `${t.grade.letter} · ${t.grade.percentile}th pct`));
   if (rankRow) chips.appendChild(chip("Power Rank", "#" + rankRow.rank));
   if (standing) {
     chips.appendChild(chip("PF (per gm)", standing.ptsFor));
@@ -1044,6 +1045,11 @@ function renderTeam(view, teamId) {
         } else {
           detail.appendChild(el("div", "need-reason", "Nobody rostered at this group."));
         }
+        const fits = bestFreeAgentsFor(n.label, 3);
+        if (fits.length && n.level !== "SOLID") {
+          detail.appendChild(el("div", "need-depth-label", "Best available free agents"));
+          for (const p of fits) detail.appendChild(faRow(p));
+        }
         r.appendChild(detail);
       }
       needCard.appendChild(r);
@@ -1108,9 +1114,130 @@ function renderTeam(view, teamId) {
   view.appendChild(el("div", "news-disclaimer", "Full attributes, contracts, and every rating are in the CSV export above."));
 }
 
+/* ---------- Draft HQ ---------- */
+
+const DRAFT_GROUP_POS = {
+  QB: ["QB"], RB: ["HB", "FB"], WR: ["WR"], TE: ["TE"],
+  OL: ["LT", "LG", "C", "RG", "RT"], EDGE: ["LEDG", "REDG"], DT: ["DT"],
+  LB: ["SAM", "WILL", "MIKE"], CB: ["CB"], S: ["FS", "SS"], Specialists: ["K", "P", "LS"],
+};
+const DRAFT_GROUPS = Object.keys(DRAFT_GROUP_POS);
+const hqState = { faGroup: "", pickRound: 1, pickSlot: "", pickYear: 0 };
+
+function bestFreeAgentsFor(group, limit) {
+  const positions = DRAFT_GROUP_POS[group];
+  return (DATA.freeAgents || []).filter((p) => !positions || positions.includes(p.pos)).slice(0, limit);
+}
+
+function faRow(p) {
+  const r = el("div", "wire-row");
+  r.appendChild(avatar({ name: p.name, teamId: -1, portraitId: p.portraitId }));
+  const who = el("div", "wire-who");
+  who.appendChild(el("div", "wire-name", p.name));
+  who.appendChild(el("div", "wire-sub", `${p.pos} · ${p.age} yrs · value ${p.value.toLocaleString()}`));
+  r.appendChild(who);
+  const devWrap = el("span", "player-dev");
+  devWrap.appendChild(el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—"));
+  r.appendChild(devWrap);
+  r.appendChild(el("span", "player-ovr", String(p.ovr)));
+  return r;
+}
+
+function renderDraftHq(view) {
+  const back = el("button", "team-back", "← Back");
+  back.type = "button";
+  back.addEventListener("click", () => { viewDraftHq = false; try { history.pushState(null, "", location.pathname + location.search); } catch {} render(); });
+  view.appendChild(back);
+
+  view.appendChild(sectionHead("Draft HQ", "the whole league's draft picture"));
+
+  // --- League needs matrix ---
+  view.appendChild(sectionHead("League Needs", "tap a team for its full board"));
+  const wrap = el("div", "card table-wrap");
+  const table = el("table", "needs-matrix");
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.appendChild(el("th", null, "Team"));
+  for (const g of DRAFT_GROUPS) hr.appendChild(el("th", null, g === "Specialists" ? "SPEC" : g));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el("tbody");
+  const byNeed = [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick));
+  for (const t of byNeed) {
+    const tr = el("tr");
+    tr.addEventListener("click", () => openTeam(t.teamId));
+    const teamTd = el("td", "nm-team");
+    teamTd.appendChild(logoImg(t.abbr, "hist-logo"));
+    teamTd.appendChild(el("span", null, t.abbr));
+    tr.appendChild(teamTd);
+    const needs = (DATA.needs && DATA.needs[String(t.teamId)]) || [];
+    for (const g of DRAFT_GROUPS) {
+      const n = needs.find((x) => x.label === g);
+      const td = el("td", "nm-cell");
+      td.appendChild(el("span", "nm-dot lv-" + (n ? n.level.toLowerCase() : "solid")));
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  view.appendChild(wrap);
+  const legend = el("div", "nm-legend");
+  for (const [lv, label] of [["high", "High need"], ["medium", "Medium"], ["low", "Low"], ["solid", "Solid"]]) {
+    const item = el("span", "nm-legend-item");
+    item.appendChild(el("span", "nm-dot lv-" + lv));
+    item.appendChild(document.createTextNode(" " + label));
+    legend.appendChild(item);
+  }
+  view.appendChild(legend);
+
+  // --- Best available free agents ---
+  view.appendChild(sectionHead("Best Available", "free agents, right now"));
+  const pills = el("div", "week-pills");
+  for (const g of ["", ...DRAFT_GROUPS]) {
+    const pill = el("button", "week-pill" + (hqState.faGroup === g ? " active" : ""), g === "" ? "All" : g === "Specialists" ? "SPEC" : g);
+    pill.type = "button";
+    pill.addEventListener("click", () => { hqState.faGroup = g; render(); });
+    pills.appendChild(pill);
+  }
+  view.appendChild(pills);
+  const faCard = el("div", "card");
+  const fas = hqState.faGroup ? bestFreeAgentsFor(hqState.faGroup, 12) : (DATA.freeAgents || []).slice(0, 12);
+  for (const p of fas) faCard.appendChild(faRow(p));
+  if (!fas.length) faCard.appendChild(el("div", "empty", "No free agents in this group right now."));
+  view.appendChild(faCard);
+
+  // --- Pick value calculator ---
+  view.appendChild(sectionHead("Pick Value", "the same chart /trade uses"));
+  const calc = el("div", "card pick-calc");
+  const row = el("div", "pick-adder");
+  const roundSel = el("select");
+  for (let r = 1; r <= 7; r++) { const o = new Option(`Round ${r}`, String(r)); o.selected = hqState.pickRound === r; roundSel.appendChild(o); }
+  const slotSel = el("select");
+  slotSel.appendChild(new Option("Slot: TBD", ""));
+  for (let s = 1; s <= (DATA.picksPerRound || 32); s++) { const o = new Option(`Pick ${s}`, String(s)); o.selected = hqState.pickSlot === String(s); slotSel.appendChild(o); }
+  const yearSel = el("select");
+  YEAR_WORDS.forEach((w, i) => { const o = new Option(w[0].toUpperCase() + w.slice(1), String(i)); o.selected = hqState.pickYear === i; yearSel.appendChild(o); });
+  for (const [sel, key] of [[roundSel, "pickRound"], [slotSel, "pickSlot"], [yearSel, "pickYear"]]) {
+    sel.addEventListener("change", () => { hqState[key] = key === "pickSlot" ? sel.value : Number(sel.value); render(); });
+  }
+  row.appendChild(roundSel); row.appendChild(slotSel); row.appendChild(yearSel);
+  calc.appendChild(row);
+  const val = pickValue(hqState.pickRound, hqState.pickSlot === "" ? null : Number(hqState.pickSlot), hqState.pickYear);
+  const out = el("div", "pick-calc-out");
+  out.appendChild(el("span", "pick-calc-val", val.toLocaleString()));
+  out.appendChild(el("span", "pick-calc-label", "trade value — same scale as player values in the Trade tab"));
+  calc.appendChild(out);
+  view.appendChild(calc);
+}
+
 /* ---------- Teams directory ---------- */
 
 function renderTeams(view) {
+  const hqBtn = el("button", "trade-cta hq-btn", "🏈 DRAFT HQ — league needs · best available · pick values");
+  hqBtn.type = "button";
+  hqBtn.addEventListener("click", openDraftHq);
+  view.appendChild(hqBtn);
   view.appendChild(sectionHead("Teams", "tap a team for roster, results & CSV"));
   const grid = el("div", "teams-grid");
   const sorted = [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick));
@@ -1214,6 +1341,7 @@ const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers
 let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
+let viewDraftHq = false; // the league-wide Draft HQ page
 const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
 const needsView = { sort: "need", open: null }; // draft board: sort mode + which group is expanded
 let scoreWeek = null; // "stage-week" key of a past week being browsed on Home, null = current week
@@ -1230,9 +1358,16 @@ function closeTeam(viaHistory) {
   if (!viaHistory) { try { history.pushState(null, "", location.pathname + location.search); } catch {} }
   render();
 }
+function openDraftHq() {
+  viewDraftHq = true;
+  viewTeamId = null;
+  try { history.pushState({ draft: true }, "", "#draft"); } catch {}
+  render();
+}
 window.addEventListener("popstate", () => {
   const m = (location.hash || "").match(/^#team-(\d+)$/);
   viewTeamId = m ? Number(m[1]) : null;
+  viewDraftHq = (location.hash || "") === "#draft";
   render();
 });
 
@@ -1242,6 +1377,7 @@ function render() {
   const y = window.scrollY;
   view.replaceChildren();
   if (!DATA) { view.appendChild(el("div", "loading", "Loading league data…")); return; }
+  if (viewDraftHq) { renderDraftHq(view); lastRenderedTab = "draft-hq"; window.scrollTo(0, keepScroll ? y : 0); return; }
   if (viewTeamId != null) { renderTeam(view, viewTeamId); lastRenderedTab = "team-" + viewTeamId; window.scrollTo(0, keepScroll ? y : 0); return; }
   RENDERERS[activeTab](view);
   lastRenderedTab = activeTab;
@@ -1253,6 +1389,7 @@ function render() {
 for (const btn of document.querySelectorAll(".tab")) {
   btn.addEventListener("click", () => {
     viewTeamId = null;
+    viewDraftHq = false;
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     activeTab = btn.dataset.tab;
     for (const b of document.querySelectorAll(".tab")) {
@@ -1280,6 +1417,7 @@ async function load() {
   document.getElementById("week-chip").textContent = DATA.weekLabel || "—";
   const m = (location.hash || "").match(/^#team-(\d+)$/);
   if (m) viewTeamId = Number(m[1]);
+  if ((location.hash || "") === "#draft") viewDraftHq = true;
   render();
 }
 

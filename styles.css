@@ -810,6 +810,34 @@ a.card:active { background: var(--surface-2); }
 .need-starter { margin-left: auto; font-size: 11.5px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .need-reason { margin-top: 4px; font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
 
+/* ---------- Draft HQ ---------- */
+.hq-btn { margin-bottom: 14px; text-align: center; }
+.needs-matrix { width: 100%; border-collapse: collapse; font-size: 12px; }
+.needs-matrix th {
+  background: var(--surface-2); color: var(--text-faint);
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9px;
+  letter-spacing: .05em; text-transform: uppercase;
+  padding: 7px 6px; text-align: center; white-space: nowrap;
+  border-bottom: 1px solid var(--edge);
+}
+.needs-matrix th:first-child { text-align: left; padding-left: 12px; }
+.needs-matrix td { padding: 6px; text-align: center; border-bottom: 1px solid var(--edge); }
+.needs-matrix tbody tr { cursor: pointer; }
+.needs-matrix tbody tr:hover { background: var(--surface-2); }
+.needs-matrix tbody tr:last-child td { border-bottom: 0; }
+.nm-team { display: flex; align-items: center; gap: 7px; font-family: "Archivo", sans-serif; font-weight: 800; font-size: 12px; padding-left: 12px !important; white-space: nowrap; }
+.nm-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; }
+.nm-dot.lv-high { background: var(--red); }
+.nm-dot.lv-medium { background: #d19b00; }
+.nm-dot.lv-low { background: #b9c0c8; }
+.nm-dot.lv-solid { background: rgba(18,138,77,.35); }
+.nm-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 2px 0; font-size: 11px; color: var(--text-faint); }
+.nm-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.pick-calc { padding: 12px 14px; }
+.pick-calc-out { display: flex; align-items: baseline; gap: 10px; margin-top: 10px; }
+.pick-calc-val { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 30px; color: var(--red); font-variant-numeric: tabular-nums; }
+.pick-calc-label { font-size: 11px; color: var(--text-faint); }
+
 /* ---------- Teams directory + player lookup ---------- */
 .teams-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .team-card {
