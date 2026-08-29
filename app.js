@@ -1559,7 +1559,7 @@ const DRAFT_GROUPS = Object.keys(DRAFT_GROUP_POS);
 const hqState = { faGroup: "", pickRound: 1, pickSlot: "", pickYear: 0 };
 
 function bestFreeAgentsFor(group, limit) {
-  const positions = DRAFT_GROUP_POS[group];
+  const positions = DRAFT_GROUP_POS[group] ?? (group === "LS" ? ["LS"] : null);
   return (DATA.freeAgents || []).filter((p) => !positions || positions.includes(p.pos)).slice(0, limit);
 }
 
@@ -1630,7 +1630,7 @@ function renderDraftHq(view) {
   // --- Best available free agents ---
   view.appendChild(sectionHead("Best Available", "free agents, right now"));
   const pills = el("div", "week-pills");
-  for (const g of ["", ...DRAFT_GROUPS]) {
+  for (const g of ["", ...DRAFT_GROUPS, "LS"]) {
     const pill = el("button", "week-pill" + (hqState.faGroup === g ? " active" : ""), g === "" ? "All" : g === "Specialists" ? "SPEC" : g);
     pill.type = "button";
     pill.addEventListener("click", () => { hqState.faGroup = g; render(); });
@@ -1705,6 +1705,9 @@ const GROUP_RATING_COLS = {
   CB: ["mcv", "zcv", "prs", "spd", "acc", "agi", "cod", "prc", "cth"],
   S: ["zcv", "mcv", "tak", "pur", "prc", "spd", "pow", "cth"],
   Specialists: ["kpw", "kac", "awr"],
+  // Long snappers get their own pill (buried in OL/SPEC otherwise) — judged on
+  // blocking, awareness, and covering the punt, since EA has no snap rating.
+  LS: ["awr", "str", "ibl", "rbk", "pbk", "tak", "spd"],
 };
 
 /**
@@ -1811,7 +1814,7 @@ function renderFreeAgents(view) {
   view.appendChild(controls);
 
   const posPills = el("div", "week-pills");
-  for (const g of ["", ...DRAFT_GROUPS]) {
+  for (const g of ["", ...DRAFT_GROUPS, "LS"]) {
     const pill = el("button", "week-pill" + (faView.pos === g ? " active" : ""), g === "" ? "All" : g === "Specialists" ? "SPEC" : g);
     pill.type = "button";
     pill.addEventListener("click", () => {
@@ -1862,7 +1865,7 @@ function renderFreeAgents(view) {
     // he's a re-sign decision. Label him instead of scoring him against himself.
     const YOURS = { score: -1, verdict: "YOURS", reasons: [] };
     const scored = pool
-      .filter((p) => !faView.pos || (DRAFT_GROUP_POS[faView.pos] || []).includes(p.pos))
+      .filter((p) => !faView.pos || (DRAFT_GROUP_POS[faView.pos] || (faView.pos === "LS" ? ["LS"] : [])).includes(p.pos))
       .filter((p) => !q || p.name.toLowerCase().includes(q))
       .map((p) => (faView.teamId ? { ...p, fit: p.teamId === faView.teamId ? YOURS : fitFor(p, faView.teamId) } : p));
 
@@ -1994,7 +1997,7 @@ function renderTeams(view) {
 /* ---------- Player lookup ---------- */
 
 const playerSearch = { q: "", pos: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false }; // transient, survives re-renders
-const POS_FILTERS = ["QB", "HB", "WR", "TE", "OL", "EDGE", "DT", "LB", "CB", "S", "K/P"];
+const POS_FILTERS = ["QB", "HB", "WR", "TE", "OL", "EDGE", "DT", "LB", "CB", "S", "K/P", "LS"];
 const POS_GROUPS = {
   OL: ["LT", "LG", "C", "RG", "RT", "LS"],
   EDGE: ["LEDG", "REDG"],
@@ -2007,7 +2010,7 @@ const POS_GROUPS = {
 // Specialists).
 const POS_FILTER_TO_RATING_GROUP = {
   "": "", QB: "QB", HB: "RB", WR: "WR", TE: "TE", OL: "OL",
-  EDGE: "EDGE", DT: "DT", LB: "LB", CB: "CB", S: "S", "K/P": "Specialists",
+  EDGE: "EDGE", DT: "DT", LB: "LB", CB: "CB", S: "S", "K/P": "Specialists", LS: "LS",
 };
 
 function renderPlayers(view) {
