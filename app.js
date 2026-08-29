@@ -312,6 +312,117 @@ function openPlayerCard(id) {
   document.body.style.overflow = "hidden";
 }
 
+/* ---------- Box scores — lazy box.json, shared by game cards / week browser / team game logs ---------- */
+
+let BOX_DATA; // undefined = not fetched yet, null = fetch failed, object = loaded
+async function loadBoxScores() {
+  if (BOX_DATA !== undefined) return BOX_DATA;
+  try {
+    BOX_DATA = await fetch("box.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null));
+  } catch {
+    BOX_DATA = null;
+  }
+  return BOX_DATA;
+}
+
+function findBoxGame(box, stage, week, scheduleId) {
+  if (!box) return null;
+  if (stage != null && week != null) {
+    return (box[`${stage}-${week}`] || []).find((g) => g.scheduleId === scheduleId) || null;
+  }
+  // Old cached site.json without week identifiers — scheduleIds are unique league-wide, scan.
+  for (const games of Object.values(box)) {
+    const hit = games.find((g) => g.scheduleId === scheduleId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Full box score: team comparison + Madden-style categories (Passing / Rushing / Receiving / Defense / Special Teams). Player lines open the player card. EA ships no per-lineman stats, so there's no OL section — sacks live in the team comparison. */
+function boxScorePanel(scheduleId, stage, week) {
+  const wrap = el("div", "box-score");
+  wrap.addEventListener("click", (e) => e.stopPropagation());
+  const body = el("div", "box-body");
+  body.appendChild(el("div", "empty", "Loading box score…"));
+  wrap.appendChild(body);
+
+  loadBoxScores().then((box) => {
+    if (!wrap.isConnected) return;
+    const game = findBoxGame(box, stage, week, scheduleId);
+    body.replaceChildren();
+    if (!game) {
+      body.appendChild(el("div", "empty", "No box score recorded — stats exist for games played after a sync covered their week."));
+      return;
+    }
+
+    const cell = (v) => (v == null ? "—" : String(v));
+    if (game.team.away || game.team.home) {
+      body.appendChild(el("div", "tape-section-label", "Team Stats"));
+      const rows = [
+        ["Total yards", (s) => s?.totYds],
+        ["Pass yards", (s) => s?.passYds],
+        ["Rush yards", (s) => s?.rushYds],
+        ["3rd down", (s) => (s ? `${s.thirdConv}/${s.thirdAtt}` : null)],
+        ["Red zone TD", (s) => (s ? `${s.rzTd}/${s.rz}` : null)],
+        ["Giveaways", (s) => s?.giveaways],
+        ["Sacks (def)", (s) => s?.sacks],
+        ["Penalty yds", (s) => s?.penYds],
+      ];
+      for (const [label, get] of rows) {
+        const r = el("div", "tape-row");
+        r.appendChild(el("span", "tape-val", cell(get(game.team.away))));
+        r.appendChild(el("span", "tape-label", label));
+        r.appendChild(el("span", "tape-val right", cell(get(game.team.home))));
+        body.appendChild(r);
+      }
+    }
+
+    const abbrOf = (teamId) => team(teamId).abbr || "—";
+    const lineRow = (p, text) => {
+      const r = el("div", "box-line" + (p.id ? " row-tappable" : ""));
+      if (p.id) r.addEventListener("click", (e) => { e.stopPropagation(); openPlayerCard(p.id); });
+      r.appendChild(el("span", "box-line-team", abbrOf(p.t)));
+      r.appendChild(el("span", "box-line-name", p.n));
+      r.appendChild(el("span", "box-line-stat", text));
+      return r;
+    };
+    const cats = [
+      { label: "Passing", has: (p) => p.pass, fmt: (p) => `${p.pass.cmp}/${p.pass.att} · ${p.pass.yds} yds · ${p.pass.td} TD · ${p.pass.int} INT`, by: (p) => p.pass.yds },
+      { label: "Rushing", has: (p) => p.rush, fmt: (p) => `${p.rush.att} att · ${p.rush.yds} yds · ${p.rush.td} TD`, by: (p) => p.rush.yds },
+      { label: "Receiving", has: (p) => p.rec, fmt: (p) => `${p.rec.ct} rec · ${p.rec.yds} yds · ${p.rec.td} TD`, by: (p) => p.rec.yds },
+      { label: "Defense", has: (p) => p.def, fmt: (p) => `${p.def.tkl} tkl · ${p.def.sck} sck · ${p.def.int} INT · ${p.def.ff} FF`, by: (p) => p.def.tkl + p.def.sck * 2 + p.def.int * 3 },
+      { label: "Special Teams", has: (p) => p.kick || p.punt, fmt: (p) => [
+          p.kick ? `FG ${p.kick.fgm}/${p.kick.fga} · XP ${p.kick.xpm}/${p.kick.xpa}` : null,
+          p.punt && p.punt.att ? `${p.punt.att} punts · ${(p.punt.yds / p.punt.att).toFixed(1)} avg` : null,
+        ].filter(Boolean).join(" · "), by: (p) => (p.kick ? p.kick.fgm * 3 + p.kick.xpm : 0) },
+    ];
+    for (const cat of cats) {
+      const players = game.players.filter(cat.has).sort((a, b) => cat.by(b) - cat.by(a));
+      if (!players.length) continue;
+      body.appendChild(el("div", "tape-section-label", cat.label));
+      for (const p of players) body.appendChild(lineRow(p, cat.fmt(p)));
+    }
+    if (!game.players.length) body.appendChild(el("div", "empty", "No individual stat lines recorded for this game."));
+  });
+  return wrap;
+}
+
+/** Click-to-toggle wrapper used by the week browser and team game logs — the box panel mounts under the row on first tap, detaches on the next. */
+function attachBoxToggle(row, scheduleId, stage, week) {
+  if (!scheduleId) return row; // old cached data without ids — row stays a plain row
+  const wrap = el("div", "box-toggle-wrap");
+  row.classList.add("row-tappable");
+  let open = null;
+  row.addEventListener("click", () => {
+    if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
+    open = boxScorePanel(scheduleId, stage, week);
+    row.classList.add("open");
+    wrap.appendChild(open);
+  });
+  wrap.prepend(row);
+  return wrap;
+}
+
 /* Side-by-side matchup panel (tale of the tape) shown when a game card is tapped. */
 function matchupPanel(g, away, home) {
   const panel = el("div", "matchup-panel");
@@ -397,6 +508,13 @@ function matchupPanel(g, away, home) {
         panel.appendChild(el("div", "tape-h2h", `Earlier this season (${w.label}): ${team(h.awayTeamId).abbr} ${h.awayScore} — ${h.homeScore} ${team(h.homeTeamId).abbr}`));
       }
     }
+  }
+
+  // Finished games get the full box score inline — the strategy sections above
+  // stay useful as the post-mortem, the box tells you what actually happened.
+  if (g.played) {
+    panel.appendChild(el("div", "tape-section-label", "Final — Box Score"));
+    panel.appendChild(boxScorePanel(g.scheduleId, DATA.week?.stage ?? null, DATA.week?.week ?? null));
   }
 
   if (g.channelUrl && !g.played) {
@@ -638,7 +756,10 @@ function renderHome(view) {
   if (scoreWeek) {
     const w = pastWeeks.find((x) => `${x.stage}-${x.week}` === scoreWeek);
     const card = el("div", "card");
-    for (const g of w ? w.games : []) card.appendChild(historyRow(g));
+    for (const g of w ? w.games : []) {
+      const row = historyRow(g);
+      card.appendChild(g.kind === "played" ? attachBoxToggle(row, g.scheduleId, w.stage, w.week) : row);
+    }
     if (!w || !w.games.length) card.appendChild(el("div", "empty", "No recorded results for that week."));
     main.appendChild(card);
   } else {
@@ -1248,7 +1369,7 @@ function renderTeam(view, teamId) {
         const home = g.homeTeamId === teamId;
         const oppId = home ? g.awayTeamId : g.homeTeamId;
         const my = home ? g.homeScore : g.awayScore, their = home ? g.awayScore : g.homeScore;
-        log.push({ label: w.label, opp: team(oppId), home, result: my > their ? "W" : my < their ? "L" : "T", score: `${my}-${their}` });
+        log.push({ label: w.label, opp: team(oppId), home, result: my > their ? "W" : my < their ? "L" : "T", score: `${my}-${their}`, scheduleId: g.scheduleId, stage: w.stage, week: w.week });
       } else if (g.kind === "forceWin" && (g.winnerTeamId === teamId || g.loserTeamId === teamId)) {
         log.push({ label: w.label, opp: team(g.winnerTeamId === teamId ? g.loserTeamId : g.winnerTeamId), home: null, result: g.winnerTeamId === teamId ? "W" : "L", score: "Force Win" });
       } else if (g.kind === "fairSim" && (g.awayTeamId === teamId || g.homeTeamId === teamId)) {
@@ -1266,7 +1387,8 @@ function renderTeam(view, teamId) {
       r.appendChild(logoImg(row.opp.abbr, "hist-logo"));
       r.appendChild(el("span", "gamelog-opp", (row.home === null ? "" : row.home ? "vs " : "@ ") + row.opp.nick));
       r.appendChild(el("span", "gamelog-score", row.score));
-      logCard.appendChild(r);
+      // Played games expand into their full box score; forced/simmed games have none.
+      logCard.appendChild(row.scheduleId ? attachBoxToggle(r, row.scheduleId, row.stage, row.week) : r);
     }
     view.appendChild(logCard);
   }

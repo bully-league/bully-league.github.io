@@ -1136,3 +1136,15 @@ a.card:active { background: var(--surface-2); }
 .fa-team-cell { display: flex; align-items: center; gap: 6px; font-weight: 700; }
 .fa-team-logo { width: 18px; height: 18px; }
 .fit-badge.fit-yours { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--edge); }
+
+/* ---------- Box scores ---------- */
+.box-score { margin-top: 4px; }
+.box-line { display: flex; align-items: baseline; gap: 8px; padding: 3.5px 0; font-size: 12.5px; }
+.box-line-team {
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 85%;
+  font-size: 10.5px; color: var(--text-faint); width: 32px; flex: none;
+}
+.box-line-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.box-line-stat { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); white-space: nowrap; }
+.box-toggle-wrap .box-score { padding: 0 14px 12px; }
+.box-toggle-wrap > .hist-row.open, .box-toggle-wrap > .gamelog-row.open { background: var(--surface-2); }
