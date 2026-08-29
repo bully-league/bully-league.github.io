@@ -1620,7 +1620,7 @@ function renderFreeAgents(view) {
     : `all ${pool.length} players · every column sorts`));
 
   const modePills = el("div", "week-pills");
-  for (const [key, label] of [["now", `Free now (${nowPool.length})`], ["upcoming", `Upcoming class (${upcomingPool.length})`]]) {
+  for (const [key, label] of [["now", `Current Free Agents (${nowPool.length})`], ["upcoming", `Upcoming Free Agents (${upcomingPool.length})`]]) {
     const pill = el("button", "week-pill" + ((faView.mode === key || (!faView.mode && key === "now")) ? " active" : ""), label);
     pill.type = "button";
     pill.addEventListener("click", () => {
