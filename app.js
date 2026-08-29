@@ -152,6 +152,166 @@ function timeAgo(iso) {
 
 const DISCORD_PATH = "M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.2a18 18 0 0 0-5.5 0L8.6 3a19.8 19.8 0 0 0-4.9 1.5A20.4 20.4 0 0 0 .2 18.1a19.9 19.9 0 0 0 6 3l1.2-2a12.9 12.9 0 0 1-2-.9l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4a12.9 12.9 0 0 1-2 .9l1.2 2a19.9 19.9 0 0 0 6-3A20.4 20.4 0 0 0 20.3 4.4ZM8 14.7c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm8 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z";
 
+/* ---------- Player card: tap any player anywhere ---------- */
+
+function playerById(id) {
+  for (const [teamId, roster] of Object.entries(DATA.rosters || {})) {
+    const p = roster.find((x) => x.id === id);
+    if (p) return { p, teamId: Number(teamId) };
+  }
+  const fa = (DATA.freeAgents || []).find((x) => x.id === id);
+  if (fa) return { p: fa, teamId: null };
+  return null;
+}
+
+function fmtMoney(n) {
+  if (n == null || !isFinite(n) || n === 0) return null;
+  if (Math.abs(n) >= 1e6) return "$" + (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (Math.abs(n) >= 1e3) return "$" + Math.round(n / 1e3) + "K";
+  return "$" + n;
+}
+
+/**
+ * The universal player card — a strategy sheet, not a headshot viewer: bio,
+ * contract, dev, the season box-score line, position-relevant ratings (all 37
+ * on toggle), and — for a free agent while advising as a team — the fit
+ * verdict with its reasons. Every field shown is real synced data; sections
+ * whose data is missing (older cached site.json) simply don't render.
+ */
+function openPlayerCard(id) {
+  if (!id) return;
+  const hit = playerById(id);
+  if (!hit) return;
+  const { p, teamId } = hit;
+  const t = teamId != null ? team(teamId) : null;
+
+  const ov = el("div", "pcard-ov");
+  const close = () => {
+    ov.remove();
+    document.removeEventListener("keydown", onKey);
+    document.body.style.overflow = "";
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+
+  const card = el("div", "pcard");
+  const x = el("button", "pcard-close", "✕");
+  x.type = "button";
+  x.setAttribute("aria-label", "Close");
+  x.addEventListener("click", close);
+  card.appendChild(x);
+
+  const head = el("div", "pcard-head");
+  head.appendChild(avatar({ name: p.name, teamId: teamId ?? -1, portraitId: p.portraitId }, "pcard-av"));
+  const who = el("div", "pcard-who");
+  who.appendChild(el("div", "pcard-name display", p.name));
+  const devBadge = el("span", "dev-badge dev-" + (p.dev || "Normal").toLowerCase().replace(/[^a-z]/g, ""), p.dev || "—");
+  const sub = el("div", "pcard-sub", [p.pos, `${p.age} yrs`, p.yrs != null ? `${p.yrs} yrs pro` : null].filter(Boolean).join(" · ") + " ");
+  sub.appendChild(devBadge);
+  who.appendChild(sub);
+  const teamLine = el("div", "pcard-team");
+  if (t) {
+    teamLine.appendChild(logoImg(t.abbr, "pcard-team-logo"));
+    teamLine.appendChild(el("span", null, `${t.city} ${t.nick}`));
+  } else {
+    teamLine.appendChild(el("span", "pcard-fa-pill", "FREE AGENT"));
+  }
+  who.appendChild(teamLine);
+  head.appendChild(who);
+  card.appendChild(head);
+
+  const chips = el("div", "team-chips pcard-chips");
+  const chip = (label, value) => {
+    const d = el("div", "team-chip");
+    d.appendChild(el("div", "team-chip-val", String(value)));
+    d.appendChild(el("div", "team-chip-label", label));
+    return d;
+  };
+  chips.appendChild(chip("OVR", p.ovr));
+  if (p.value != null) chips.appendChild(chip("Trade value", p.value.toLocaleString()));
+  if (fmtMoney(p.salary)) chips.appendChild(chip("Salary", fmtMoney(p.salary)));
+  if (fmtMoney(p.capHit)) chips.appendChild(chip("Cap hit", fmtMoney(p.capHit)));
+  if (p.yrsLeft != null && p.yrsLeft > 0) chips.appendChild(chip("Contract yrs", p.yrsLeft));
+  if (p.inj) chips.appendChild(chip("🩹 Out", p.inj + " wks"));
+  card.appendChild(chips);
+
+  // Fit advisement — only meaningful for a free agent while a team is picked.
+  if (teamId == null && faView.teamId) {
+    const fit = fitFor(p, faView.teamId);
+    const sec = el("div", "pcard-sec");
+    const lbl = el("div", "need-depth-label", `Fit for the ${team(faView.teamId).nick} `);
+    lbl.appendChild(el("span", "fit-badge fit-" + fit.verdict.toLowerCase().replace(/[^a-z]/g, ""), fit.verdict));
+    sec.appendChild(lbl);
+    for (const reason of fit.reasons) sec.appendChild(el("div", "need-reason", "• " + reason));
+    card.appendChild(sec);
+  }
+
+  const line = (DATA.stats || {})[String(id)];
+  const statSec = el("div", "pcard-sec");
+  statSec.appendChild(el("div", "need-depth-label", line ? `Season stats · ${line.w} wk` : "Season stats"));
+  if (line) {
+    const st = (label, txt) => {
+      const d = el("div", "pcard-stat");
+      d.appendChild(el("strong", null, label));
+      d.appendChild(document.createTextNode(" " + txt));
+      return d;
+    };
+    if (line.pass) statSec.appendChild(st("Passing", `${line.pass.cmp}/${line.pass.att} · ${line.pass.yds.toLocaleString()} yds · ${line.pass.td} TD · ${line.pass.int} INT`));
+    if (line.rush) statSec.appendChild(st("Rushing", `${line.rush.att} att · ${line.rush.yds.toLocaleString()} yds · ${line.rush.td} TD` + (line.rush.att ? ` · ${(line.rush.yds / line.rush.att).toFixed(1)}/carry` : "")));
+    if (line.rec) statSec.appendChild(st("Receiving", `${line.rec.ct} rec · ${line.rec.yds.toLocaleString()} yds · ${line.rec.td} TD · ${line.rec.drp} drops`));
+    if (line.def) statSec.appendChild(st("Defense", `${line.def.tkl} tkl · ${line.def.sck} sacks · ${line.def.int} INT · ${line.def.ff} FF`));
+    if (line.kick) statSec.appendChild(st("Kicking", `FG ${line.kick.fgm}/${line.kick.fga} · XP ${line.kick.xpm}/${line.kick.xpa}`));
+    if (line.punt && line.punt.att) statSec.appendChild(st("Punting", `${line.punt.att} punts · ${(line.punt.yds / line.punt.att).toFixed(1)} avg`));
+  } else {
+    statSec.appendChild(el("div", "pcard-stat-empty", "No box-score stats recorded this season."));
+  }
+  card.appendChild(statSec);
+
+  if (p.rat && Object.keys(p.rat).length) {
+    const sec = el("div", "pcard-sec");
+    const group = POS_TO_GROUP[p.pos] || "";
+    let showAllR = false;
+    const lbl = el("div", "need-depth-label");
+    const grid = el("div", "pcard-ratings");
+    const draw = () => {
+      lbl.textContent = showAllR ? "All ratings · best first" : "Key ratings" + (group ? ` for ${group}` : "");
+      grid.replaceChildren();
+      const keys = showAllR
+        ? Object.keys(p.rat).sort((a, b) => p.rat[b] - p.rat[a])
+        : (GROUP_RATING_COLS[group] || GROUP_RATING_COLS[""]);
+      for (const k of keys) {
+        const v = p.rat[k];
+        if (v == null) continue;
+        const cell = el("div", "pcard-rat");
+        cell.title = RATING_NAMES[k] || k;
+        cell.appendChild(el("div", "pcard-rat-val" + (v >= 90 ? " hi" : v >= 80 ? " good" : v < 70 ? " low" : ""), String(v)));
+        cell.appendChild(el("div", "pcard-rat-key", k.toUpperCase()));
+        grid.appendChild(cell);
+      }
+    };
+    draw();
+    sec.appendChild(lbl);
+    sec.appendChild(grid);
+    const tog = el("button", "csv-all-link pcard-rat-toggle", "Show all 37 ratings");
+    tog.type = "button";
+    tog.addEventListener("click", () => { showAllR = !showAllR; tog.textContent = showAllR ? "Show key ratings" : "Show all 37 ratings"; draw(); });
+    sec.appendChild(tog);
+    card.appendChild(sec);
+  }
+
+  if (t) {
+    const btn = el("button", "trade-cta pcard-teambtn", `View ${t.nick} team page →`);
+    btn.type = "button";
+    btn.addEventListener("click", () => { close(); if (viewTeamId !== teamId) openTeam(teamId); });
+    card.appendChild(btn);
+  }
+
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  document.body.style.overflow = "hidden";
+}
+
 /* Side-by-side matchup panel (tale of the tape) shown when a game card is tapped. */
 function matchupPanel(g, away, home) {
   const panel = el("div", "matchup-panel");
@@ -160,20 +320,72 @@ function matchupPanel(g, away, home) {
   const rA = (DATA.rankings || []).find((r) => r.teamId === g.awayTeamId);
   const rB = (DATA.rankings || []).find((r) => r.teamId === g.homeTeamId);
 
-  const rows = [
+  const addTapeRows = (rows) => {
+    for (const row of rows) {
+      if (row.a === row.b) row.betterA = null;
+      const r = el("div", "tape-row");
+      r.appendChild(el("span", "tape-val" + (row.betterA === true ? " better" : ""), String(row.a)));
+      r.appendChild(el("span", "tape-label", row.label));
+      r.appendChild(el("span", "tape-val right" + (row.betterA === false ? " better" : ""), String(row.b)));
+      panel.appendChild(r);
+    }
+  };
+  addTapeRows([
     { label: "Record", a: record(g.awayTeamId) || "—", b: record(g.homeTeamId) || "—", betterA: sA && sB ? sA.wins - sA.losses > sB.wins - sB.losses : null },
     { label: "Team OVR", a: away.ovr ?? "—", b: home.ovr ?? "—", betterA: (away.ovr ?? 0) > (home.ovr ?? 0) },
     { label: "Power Rank", a: rA ? "#" + rA.rank : "—", b: rB ? "#" + rB.rank : "—", betterA: rA && rB ? rA.rank < rB.rank : null },
     { label: "PPG", a: sA?.ptsFor ?? "—", b: sB?.ptsFor ?? "—", betterA: (sA?.ptsFor ?? 0) > (sB?.ptsFor ?? 0) },
     { label: "PA/G", a: sA?.ptsAgainst ?? "—", b: sB?.ptsAgainst ?? "—", betterA: (sA?.ptsAgainst ?? 99) < (sB?.ptsAgainst ?? 99) },
-  ];
-  for (const row of rows) {
-    if (row.a === row.b) row.betterA = null;
-    const r = el("div", "tape-row");
-    r.appendChild(el("span", "tape-val" + (row.betterA === true ? " better" : ""), String(row.a)));
-    r.appendChild(el("span", "tape-label", row.label));
-    r.appendChild(el("span", "tape-val right" + (row.betterA === false ? " better" : ""), String(row.b)));
-    panel.appendChild(r);
+  ]);
+
+  // The strategy breakdown, from the tendencies engine: how each identity
+  // matches up against the other side's defense, then auto-computed keys.
+  const tA = (DATA.tendencies || {})[String(g.awayTeamId)];
+  const tB = (DATA.tendencies || {})[String(g.homeTeamId)];
+  if (tA && tB) {
+    const signed = (n) => (n > 0 ? "+" + n : String(n));
+    panel.appendChild(el("div", "tape-section-label", "The Clash"));
+    addTapeRows([
+      { label: "Run / Pass mix", a: `${tA.runPct}·${100 - tA.runPct}`, b: `${tB.runPct}·${100 - tB.runPct}`, betterA: null },
+      { label: "Pass offense", a: "#" + tA.passYdsPgRank, b: "#" + tB.passYdsPgRank, betterA: tA.passYdsPgRank < tB.passYdsPgRank },
+      { label: "Rush offense", a: "#" + tA.rushYdsPgRank, b: "#" + tB.rushYdsPgRank, betterA: tA.rushYdsPgRank < tB.rushYdsPgRank },
+      { label: "Pass defense", a: "#" + tA.defPassYdsPgRank, b: "#" + tB.defPassYdsPgRank, betterA: tA.defPassYdsPgRank < tB.defPassYdsPgRank },
+      { label: "Rush defense", a: "#" + tA.defRushYdsPgRank, b: "#" + tB.defRushYdsPgRank, betterA: tA.defRushYdsPgRank < tB.defRushYdsPgRank },
+      { label: "3rd down", a: tA.thirdDownPct + "%", b: tB.thirdDownPct + "%", betterA: tA.thirdDownPct > tB.thirdDownPct },
+      { label: "Red zone TD", a: tA.redZoneTdPct + "%", b: tB.redZoneTdPct + "%", betterA: tA.redZoneTdPct > tB.redZoneTdPct },
+      { label: "TO margin", a: signed(tA.takeaways - tA.giveaways), b: signed(tB.takeaways - tB.giveaways), betterA: tA.takeaways - tA.giveaways > tB.takeaways - tB.giveaways },
+    ]);
+
+    const keys = [];
+    // Offense-vs-defense mismatches: a big rank gap is a lane to attack.
+    const combos = [
+      { atk: away, o: tA.passYdsPgRank, d: tB.defPassYdsPgRank, mode: "air" },
+      { atk: away, o: tA.rushYdsPgRank, d: tB.defRushYdsPgRank, mode: "ground" },
+      { atk: home, o: tB.passYdsPgRank, d: tA.defPassYdsPgRank, mode: "air" },
+      { atk: home, o: tB.rushYdsPgRank, d: tA.defRushYdsPgRank, mode: "ground" },
+    ]
+      .map((c) => ({ ...c, gap: c.d - c.o }))
+      .filter((c) => c.gap >= 6)
+      .sort((a, b) => b.gap - a.gap)
+      .slice(0, 2);
+    for (const c of combos) {
+      keys.push(c.mode === "air"
+        ? `${c.atk.abbr} can win through the air — #${c.o} pass offense against the #${c.d} pass defense.`
+        : `${c.atk.abbr} can win on the ground — #${c.o} rush offense against the #${c.d} rush defense.`);
+    }
+    // Concentrated weapons are game-planable — name them.
+    const weapon = (tend, atk, def) => {
+      const w = (tend.targets || [])[0];
+      if (w && w.sharePct >= 22) keys.push(`${def.abbr} must account for ${w.name} — ${w.sharePct}% of ${atk.abbr} targets.`);
+      const r = (tend.rushers || [])[0];
+      if (r && r.sharePct >= 55) keys.push(`${r.name} IS the ${atk.abbr} run game (${r.sharePct}% of carries).`);
+    };
+    weapon(tA, away, home);
+    weapon(tB, home, away);
+    if (keys.length) {
+      panel.appendChild(el("div", "tape-section-label", "Keys to the game"));
+      for (const k of keys.slice(0, 4)) panel.appendChild(el("div", "tape-key", "• " + k));
+    }
   }
 
   // Earlier meeting this season, from the recorded history
@@ -337,7 +549,8 @@ function headlineRow(post) {
 }
 
 function injuryRow(inj) {
-  const row = el("div", "wire-row");
+  const row = el("div", "wire-row row-tappable");
+  row.addEventListener("click", () => openPlayerCard(inj.id));
   row.appendChild(avatar({ name: inj.name, teamId: inj.teamId, portraitId: inj.portraitId }));
   const who = el("div", "wire-who");
   who.appendChild(el("div", "wire-name", inj.name));
@@ -519,7 +732,8 @@ function renderLeaders(view) {
     card.appendChild(el("div", "leader-head", board.label));
     const [top, ...others] = board.rows;
 
-    const topRow = el("div", "leader-top");
+    const topRow = el("div", "leader-top row-tappable");
+    topRow.addEventListener("click", () => openPlayerCard(top.id));
     topRow.appendChild(avatar(top));
     const who = el("div", "who");
     who.appendChild(el("div", "name", top.name));
@@ -531,7 +745,8 @@ function renderLeaders(view) {
     card.appendChild(topRow);
 
     others.forEach((row, i) => {
-      const r = el("div", "leader-row");
+      const r = el("div", "leader-row row-tappable");
+      r.addEventListener("click", () => openPlayerCard(row.id));
       r.appendChild(el("span", "pos-num", String(i + 2)));
       r.appendChild(avatar(row));
       r.appendChild(el("span", "name", row.name));
@@ -984,7 +1199,8 @@ function renderTeam(view, teamId) {
     idCard.appendChild(grid);
 
     const shareRow = (r, sub) => {
-      const d = el("div", "share-row");
+      const d = el("div", "share-row row-tappable");
+      d.addEventListener("click", () => openPlayerCard(r.id));
       d.appendChild(avatar({ name: r.name, teamId, portraitId: r.portraitId }));
       const who = el("div", "share-who");
       const top = el("div", "share-top");
@@ -1100,7 +1316,10 @@ function renderTeam(view, teamId) {
         if ((n.depth || []).length) {
           detail.appendChild(el("div", "need-depth-label", "Depth chart"));
           n.depth.forEach((p, i) => {
-            const d = el("div", "need-depth-row");
+            const d = el("div", "need-depth-row row-tappable");
+            // Inside the need-row <button> — stop the bubble or the tap also
+            // collapses the group the player sits in.
+            d.addEventListener("click", (e) => { e.stopPropagation(); openPlayerCard(p.id); });
             d.appendChild(el("span", "pos-num", String(i + 1)));
             d.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
             d.appendChild(el("span", "wire-name", p.name));
@@ -1163,7 +1382,8 @@ function renderTeam(view, teamId) {
 
   const tbody = el("tbody");
   for (const p of sorted) {
-    const tr = el("tr");
+    const tr = el("tr", "row-tappable");
+    tr.addEventListener("click", () => openPlayerCard(p.id));
     const nameTd = el("td", "rt-name");
     nameTd.appendChild(avatar({ name: p.name, teamId, portraitId: p.portraitId }));
     nameTd.appendChild(el("span", null, p.name));
@@ -1199,7 +1419,9 @@ function bestFreeAgentsFor(group, limit) {
 }
 
 function faRow(p) {
-  const r = el("div", "wire-row");
+  const r = el("div", "wire-row row-tappable");
+  // Also used nested inside need-row <button>s — stop the bubble.
+  r.addEventListener("click", (e) => { e.stopPropagation(); openPlayerCard(p.id); });
   r.appendChild(avatar({ name: p.name, teamId: -1, portraitId: p.portraitId }));
   const who = el("div", "wire-who");
   who.appendChild(el("div", "wire-name", p.name));
@@ -1307,7 +1529,7 @@ for (const [g, positions] of Object.entries(DRAFT_GROUP_POS)) for (const p of po
 // Legacy Madden position codes (pre-M27 snapshots) map onto the same groups.
 Object.assign(POS_TO_GROUP, { LOLB: "EDGE", ROLB: "EDGE", MLB: "LB", LE: "EDGE", RE: "EDGE", LEDGE: "EDGE", REDGE: "EDGE" });
 
-const faView = { teamId: null, open: null, pos: "", q: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false };
+const faView = { teamId: null, pos: "", q: "", sort: { col: "ovr", dir: -1 }, showAll: false, showAllCols: false };
 try { faView.teamId = Number(localStorage.getItem("fa-team")) || null; } catch {}
 
 /* Madden-standard rating abbreviations. Full names feed th tooltips. */
@@ -1405,7 +1627,6 @@ function renderFreeAgents(view) {
   }
   sel.addEventListener("change", () => {
     faView.teamId = sel.value ? Number(sel.value) : null;
-    faView.open = null;
     faView.showAll = false;
     if (faView.sort.col === "fit" && !faView.teamId) faView.sort = { col: "ovr", dir: -1 };
     try { localStorage.setItem("fa-team", sel.value); } catch {}
@@ -1503,10 +1724,8 @@ function renderFreeAgents(view) {
     const CHUNK = 120;
     const shown = faView.showAll ? scored : scored.slice(0, CHUNK);
     for (const p of shown) {
-      const key = p.name + p.pos;
-      const isOpen = faView.teamId && faView.open === key;
-      const tr = el("tr", "fa-row" + (isOpen ? " open" : ""));
-      if (faView.teamId) tr.addEventListener("click", () => { faView.open = isOpen ? null : key; renderGrid(); });
+      const tr = el("tr", "fa-row row-tappable");
+      tr.addEventListener("click", () => openPlayerCard(p.id));
       const nameTd = el("td", "rt-name");
       nameTd.appendChild(avatar({ name: p.name, teamId: -1, portraitId: p.portraitId }));
       nameTd.appendChild(el("span", null, p.name));
@@ -1529,18 +1748,6 @@ function renderFreeAgents(view) {
         tr.appendChild(el("td", cls, v == null ? "—" : String(v)));
       }
       tbody.appendChild(tr);
-      if (isOpen) {
-        const dtr = el("tr", "fa-detail-row");
-        const dtd = el("td");
-        dtd.colSpan = cols.length;
-        // Sticky-left inner box: the colspan cell is as wide as the whole table,
-        // so without this the reasons would sit past the phone's scrollport.
-        const inner = el("div", "fa-detail-inner");
-        for (const reason of p.fit.reasons) inner.appendChild(el("div", "need-reason", "• " + reason));
-        dtd.appendChild(inner);
-        dtr.appendChild(dtd);
-        tbody.appendChild(dtr);
-      }
     }
     table.appendChild(tbody);
     wrap.appendChild(table);
@@ -1653,7 +1860,7 @@ function renderPlayers(view) {
     for (const p of shown) {
       const r = el("button", "player-row");
       r.type = "button";
-      r.addEventListener("click", () => openTeam(p.teamId));
+      r.addEventListener("click", () => openPlayerCard(p.id));
       r.appendChild(avatar({ name: p.name, teamId: p.teamId, portraitId: p.portraitId }));
       const who = el("div", "wire-who");
       who.appendChild(el("div", "wire-name", p.name));
@@ -1666,7 +1873,7 @@ function renderPlayers(view) {
       list.appendChild(r);
     }
     if (!shown.length) list.appendChild(el("div", "empty", "No players match."));
-    foot.textContent = rows.length > 50 ? `Showing the top 50 of ${rows.length} matches — narrow the search or tap a position.` : "Tap a player to open their team page. Full attributes are in the team CSV export.";
+    foot.textContent = rows.length > 50 ? `Showing the top 50 of ${rows.length} matches — narrow the search or tap a position.` : "Tap a player for their full card — ratings, stats, contract. CSV export lives on the team page.";
   }
   renderResults();
 }
