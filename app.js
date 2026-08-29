@@ -985,6 +985,24 @@ function renderTeam(view, teamId) {
     view.appendChild(logCard);
   }
 
+  // Draft Board — the needs engine's top targets for this team
+  const needs = (DATA.needs && DATA.needs[String(teamId)]) || [];
+  if (needs.length) {
+    view.appendChild(sectionHead("Draft Board", "positions to target"));
+    const needCard = el("div", "card");
+    for (const n of needs) {
+      const r = el("div", "need-row");
+      const head = el("div", "need-head");
+      head.appendChild(el("span", "need-pos", n.label));
+      head.appendChild(el("span", "need-level lv-" + n.level.toLowerCase(), n.level));
+      head.appendChild(el("span", "need-starter", n.starter ? `${n.starter.name} · ${n.starter.ovr} OVR` : "nobody rostered"));
+      r.appendChild(head);
+      if (n.reason && n.level !== "SOLID") r.appendChild(el("div", "need-reason", n.reason));
+      needCard.appendChild(r);
+    }
+    view.appendChild(needCard);
+  }
+
   // Sortable roster table
   view.appendChild(sectionHead("Roster", roster.length + " players"));
   if (!roster.length) { view.appendChild(el("div", "empty", "No roster data — appears after the next sync.")); return; }
