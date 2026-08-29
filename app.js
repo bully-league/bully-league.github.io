@@ -1231,6 +1231,131 @@ function renderDraftHq(view) {
   view.appendChild(calc);
 }
 
+/* ---------- Free Agents (fit engine) ---------- */
+
+const POS_TO_GROUP = {};
+for (const [g, positions] of Object.entries(DRAFT_GROUP_POS)) for (const p of positions) POS_TO_GROUP[p] = g;
+// Legacy Madden position codes (pre-M27 snapshots) map onto the same groups.
+Object.assign(POS_TO_GROUP, { LOLB: "EDGE", ROLB: "EDGE", MLB: "LB", LE: "EDGE", RE: "EDGE", LEDGE: "EDGE", REDGE: "EDGE" });
+
+const faView = { teamId: null, sort: "fit", open: null, pos: "" };
+try { faView.teamId = Number(localStorage.getItem("fa-team")) || null; } catch {}
+
+/**
+ * How much this free agent helps THIS team, from real data only: the needs
+ * engine's level at his position group, whether he beats the current starter,
+ * dev-trait/age upside, and raw quality. (EA's export has no personality or
+ * scheme fields — everything here is grounded in what actually syncs.)
+ */
+function fitFor(fa, teamId) {
+  const group = POS_TO_GROUP[fa.pos] || fa.pos;
+  const needs = (DATA.needs && DATA.needs[String(teamId)]) || [];
+  const need = needs.find((n) => n.label === group);
+  const starter = need && need.depth && need.depth[0];
+  let score = 0;
+  const reasons = [];
+
+  if (!need) {
+    // Unknown position group (unmapped code) — judge on quality alone, honestly.
+    reasons.push(`No needs data for ${group} — judged on quality alone`);
+  } else if (need.level === "HIGH") { score += 40; reasons.push(`${group} is a HIGH need for your roster`); }
+  else if (need.level === "MEDIUM") { score += 25; reasons.push(`${group} is a medium need for you`); }
+  else if (need.level === "LOW") { score += 10; reasons.push(`${group} is a low need — nice-to-have`); }
+  else reasons.push(`${group} is already solid for you`);
+
+  if (!need) { /* no roster comparison possible */ }
+  else if (!starter) { score += 25; reasons.push("You have nobody rostered at this spot — instant starter"); }
+  else {
+    const diff = fa.ovr - starter.ovr;
+    if (diff >= 2) { score += 25; reasons.push(`Would start immediately — beats ${starter.name} (${starter.ovr} OVR) by ${diff}`); }
+    else if (diff >= -3) { score += 12; reasons.push(`Pushes ${starter.name} (${starter.ovr} OVR) for the job`); }
+    else reasons.push(`Depth behind ${starter.name} (${starter.ovr} OVR)`);
+  }
+
+  if (fa.age <= 25 && fa.dev !== "Normal") { score += 15; reasons.push(`${fa.dev} dev at ${fa.age} — real upside to grow`); }
+  else if (fa.age >= 31) { score -= 8; reasons.push(`${fa.age} years old — a short-term rental`); }
+  if (fa.ovr >= 85) { score += 10; reasons.push("Plug-and-play starter quality"); }
+
+  const verdict = score >= 65 ? "GREAT FIT" : score >= 42 ? "GOOD FIT" : score >= 22 ? "DEPTH" : "LUXURY";
+  return { score, verdict, reasons };
+}
+
+function renderFreeAgents(view) {
+  view.appendChild(sectionHead("Free Agents", "fits computed for YOUR roster"));
+
+  const sel = el("select", "team-select");
+  sel.appendChild(new Option("View as… (pick your team)", ""));
+  for (const t of [...DATA.teams].sort((a, b) => a.nick.localeCompare(b.nick))) {
+    const opt = new Option(`${t.city} ${t.nick}`, String(t.teamId));
+    opt.selected = faView.teamId === t.teamId;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener("change", () => {
+    faView.teamId = sel.value ? Number(sel.value) : null;
+    faView.open = null;
+    try { localStorage.setItem("fa-team", sel.value); } catch {}
+    render();
+  });
+  view.appendChild(sel);
+
+  if (!faView.teamId) {
+    view.appendChild(el("div", "empty", "Pick the team you run and every free agent below gets scored for YOUR roster — need, starter comparison, and upside."));
+    const card = el("div", "card");
+    for (const p of (DATA.freeAgents || []).slice(0, 12)) card.appendChild(faRow(p));
+    view.appendChild(card);
+    return;
+  }
+
+  const pills = el("div", "week-pills");
+  for (const [key, label] of [["fit", "Best fit for you"], ["ovr", "Best available"]]) {
+    const pill = el("button", "week-pill" + (faView.sort === key ? " active" : ""), label);
+    pill.type = "button";
+    pill.addEventListener("click", () => { faView.sort = key; render(); });
+    pills.appendChild(pill);
+  }
+  view.appendChild(pills);
+  const posPills = el("div", "week-pills");
+  for (const g of ["", ...DRAFT_GROUPS]) {
+    const pill = el("button", "week-pill" + (faView.pos === g ? " active" : ""), g === "" ? "All" : g === "Specialists" ? "SPEC" : g);
+    pill.type = "button";
+    pill.addEventListener("click", () => { faView.pos = g; render(); });
+    posPills.appendChild(pill);
+  }
+  view.appendChild(posPills);
+
+  const scored = (DATA.freeAgents || [])
+    .filter((p) => !faView.pos || (DRAFT_GROUP_POS[faView.pos] || []).includes(p.pos))
+    .map((p) => ({ ...p, fit: fitFor(p, faView.teamId) }));
+  scored.sort((a, b) => (faView.sort === "fit" ? b.fit.score - a.fit.score || b.ovr - a.ovr : b.ovr - a.ovr));
+
+  const card = el("div", "card");
+  for (const p of scored.slice(0, 30)) {
+    const key = p.name + p.pos;
+    const isOpen = faView.open === key;
+    const r = el("button", "need-row" + (isOpen ? " open" : ""));
+    r.type = "button";
+    r.addEventListener("click", () => { faView.open = isOpen ? null : key; render(); });
+    const head = el("div", "need-head");
+    head.appendChild(avatar({ name: p.name, teamId: -1, portraitId: p.portraitId }));
+    const who = el("div", "wire-who");
+    who.appendChild(el("div", "wire-name", p.name));
+    who.appendChild(el("div", "wire-sub", `${p.pos} · ${p.age} yrs · ${p.ovr} OVR · value ${p.value.toLocaleString()}`));
+    head.appendChild(who);
+    head.appendChild(el("span", "fit-badge fit-" + p.fit.verdict.toLowerCase().replace(/[^a-z]/g, ""), p.fit.verdict));
+    head.appendChild(el("span", "need-caret", isOpen ? "▴" : "▾"));
+    r.appendChild(head);
+    if (isOpen) {
+      const detail = el("div", "need-detail");
+      for (const reason of p.fit.reasons) detail.appendChild(el("div", "need-reason", "• " + reason));
+      r.appendChild(detail);
+    }
+    card.appendChild(r);
+  }
+  if (!scored.length) card.appendChild(el("div", "empty", "No free agents match."));
+  view.appendChild(card);
+  view.appendChild(el("div", "news-disclaimer", `Top 30 of ${scored.length} shown. Fit = your need at the position + starter comparison + dev/age upside + quality — all from real synced data.`));
+}
+
 /* ---------- Teams directory ---------- */
 
 function renderTeams(view) {
@@ -1337,7 +1462,7 @@ function renderPlayers(view) {
 
 /* ---------- App shell ---------- */
 
-const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
+const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, freeagents: renderFreeAgents, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
 let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab

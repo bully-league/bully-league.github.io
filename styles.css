@@ -838,6 +838,23 @@ a.card:active { background: var(--surface-2); }
 .pick-calc-val { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 30px; color: var(--red); font-variant-numeric: tabular-nums; }
 .pick-calc-label { font-size: 11px; color: var(--text-faint); }
 
+/* ---------- Free Agents fit badges + tab label shortening ---------- */
+.need-head .avatar { width: 34px; height: 34px; font-size: 11px; border-width: 1.5px; flex: none; }
+.fit-badge {
+  margin-left: auto; flex: none;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9px;
+  letter-spacing: .06em; padding: 3px 8px; border-radius: 999px;
+}
+.fit-badge.fit-greatfit { color: #fff; background: var(--up); }
+.fit-badge.fit-goodfit { color: #8a6d00; background: rgba(184,134,11,.16); }
+.fit-badge.fit-depth { color: var(--text-dim); background: var(--surface-2); }
+.fit-badge.fit-luxury { color: #7b4fd0; background: rgba(123,79,208,.12); }
+.tab .ts { display: none; }
+@media (max-width: 899px) {
+  .tab .tl { display: none; }
+  .tab .ts { display: inline; }
+}
+
 /* ---------- Teams directory + player lookup ---------- */
 .teams-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .team-card {
