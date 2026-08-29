@@ -1559,7 +1559,8 @@ const DRAFT_GROUPS = Object.keys(DRAFT_GROUP_POS);
 const hqState = { faGroup: "", pickRound: 1, pickSlot: "", pickYear: 0 };
 
 function bestFreeAgentsFor(group, limit) {
-  const positions = DRAFT_GROUP_POS[group] ?? (group === "LS" ? ["LS"] : null);
+  let positions = DRAFT_GROUP_POS[group] ?? (group === "LS" ? ["LS"] : null);
+  if (group === "LS" && !(DATA.freeAgents || []).some((p) => p.pos === "LS")) positions = ["LT", "LG", "C", "RG", "RT", "TE"];
   return (DATA.freeAgents || []).filter((p) => !positions || positions.includes(p.pos)).slice(0, limit);
 }
 
@@ -1864,10 +1865,22 @@ function renderFreeAgents(view) {
     // An expiring player already on the advised roster isn't a signing target —
     // he's a re-sign decision. Label him instead of scoring him against himself.
     const YOURS = { score: -1, verdict: "YOURS", reasons: [] };
+    // LS is special: leagues routinely have ZERO true long snappers on the market
+    // (every team keeps one rostered), and in franchise you fill the spot with an
+    // OL/TE body. When no true LS exists in this pool, widen to those candidates —
+    // still scouted on the snapper columns — and say so.
+    let lsFallback = false;
+    let posSet = faView.pos ? (DRAFT_GROUP_POS[faView.pos] || (faView.pos === "LS" ? ["LS"] : [])) : null;
+    if (faView.pos === "LS" && !pool.some((p) => p.pos === "LS")) {
+      lsFallback = true;
+      posSet = ["LT", "LG", "C", "RG", "RT", "TE"];
+    }
     const scored = pool
-      .filter((p) => !faView.pos || (DRAFT_GROUP_POS[faView.pos] || (faView.pos === "LS" ? ["LS"] : [])).includes(p.pos))
+      .filter((p) => !posSet || posSet.includes(p.pos))
       .filter((p) => !q || p.name.toLowerCase().includes(q))
       .map((p) => (faView.teamId ? { ...p, fit: p.teamId === faView.teamId ? YOURS : fitFor(p, faView.teamId) } : p));
+
+    if (lsFallback) gridWrap.appendChild(el("div", "fa-advice", "No true LS in this pool — showing OL/TE bodies you can play at long snapper, scouted on the snapper columns."));
 
     const ratingCols = currentRatingCols();
     const cols = [
