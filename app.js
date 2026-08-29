@@ -1696,6 +1696,10 @@ function renderFreeAgents(view) {
   }
 
   function renderGrid() {
+    // Same trick render() uses: emptying a container this tall lets the browser
+    // clamp the scroll to the top before the rebuilt table lands — a sort or
+    // filter tap must never teleport the user back up the page.
+    const y = window.scrollY;
     gridWrap.replaceChildren();
 
     // Advisement strip: your identity + biggest needs, as context — not a filter.
@@ -1813,6 +1817,7 @@ function renderFreeAgents(view) {
     gridWrap.appendChild(el("div", "news-disclaimer", upcoming
       ? "Upcoming = final contract year, hitting the market next offseason unless re-signed. SAL is the CURRENT salary — EA doesn't reveal re-sign asks until the in-season negotiation window, so nothing here pretends to know the price. Fit scores them as next year's signing (YOURS = already on your roster: a re-sign call, not a target)."
       : "Columns default to what scouts weigh for the position — sort by any of them, or open all 37. Fit is advisement (need + starter comparison + upside from real synced data); it never hides a player. EA's export has no personality, scheme, or formation data, so nothing here pretends to."));
+    window.scrollTo(0, y);
   }
 
   renderGrid();
