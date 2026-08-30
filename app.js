@@ -857,7 +857,9 @@ function renderRankings(view) {
     r.appendChild(logoImg(t.abbr));
     const who = el("div", "rank-team");
     who.appendChild(el("span", "nick", t.nick));
-    who.appendChild(el("span", "sub", `${record(row.teamId)}${t.owner ? " · " + t.owner : ""}`));
+    const st = (DATA.standings || []).find((s) => s.teamId === row.teamId);
+    const diffTxt = st && st.netPts != null ? ` · ${st.netPts > 0 ? "+" : ""}${st.netPts} pts` : "";
+    who.appendChild(el("span", "sub", `${record(row.teamId)}${diffTxt}${t.owner ? " · " + t.owner : ""}`));
     r.appendChild(who);
     const d = row.delta;
     const delta = el("span", "delta " + (d > 0 ? "up" : d < 0 ? "down" : "flat"), d > 0 ? `▲ ${d}` : d < 0 ? `▼ ${Math.abs(d)}` : "—");
@@ -1296,6 +1298,7 @@ function renderTeam(view, teamId) {
   if (standing) {
     chips.appendChild(chip("PF (per gm)", standing.ptsFor));
     chips.appendChild(chip("PA (per gm)", standing.ptsAgainst));
+    if (standing.netPts != null) chips.appendChild(chip("Pt Diff", `${standing.netPts > 0 ? "+" : ""}${standing.netPts}`));
     if (standing.offYdsRank) chips.appendChild(chip("Off Yds Rank", "#" + standing.offYdsRank));
     if (standing.defYdsRank) chips.appendChild(chip("Def Yds Rank", "#" + standing.defYdsRank));
   }
