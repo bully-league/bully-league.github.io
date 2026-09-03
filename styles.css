@@ -1148,3 +1148,26 @@ a.card:active { background: var(--surface-2); }
 .box-line-stat { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); white-space: nowrap; }
 .box-toggle-wrap .box-score { padding: 0 14px 12px; }
 .box-toggle-wrap > .hist-row.open, .box-toggle-wrap > .gamelog-row.open { background: var(--surface-2); }
+
+/* ---------- Strength of Schedule ---------- */
+.sos-card { padding: 14px; }
+.sos-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.sos-dial {
+  width: 62px; height: 62px; flex: none;
+  border: 3px solid var(--sos-c, var(--red)); border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.sos-dial-val { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+.sos-dial-label { font-size: 8.5px; letter-spacing: .12em; color: var(--text-faint); margin-top: 1px; }
+.sos-head-who { min-width: 0; }
+.sos-verdict {
+  font-family: "Archivo", sans-serif; font-style: italic; font-weight: 900;
+  font-size: 17px; font-stretch: 80%; letter-spacing: .03em; color: var(--sos-c, var(--red));
+}
+.sos-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.sos-game { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; cursor: pointer; }
+.sos-game-week { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 10.5px; color: var(--text-faint); width: 26px; flex: none; }
+.sos-game-opp { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.sos-meter { width: 84px; height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; flex: none; }
+.sos-meter-fill { height: 100%; border-radius: 3px; }
+.sos-game-num { font-variant-numeric: tabular-nums; font-weight: 700; width: 24px; text-align: right; color: var(--text-dim); }

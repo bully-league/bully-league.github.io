@@ -1305,6 +1305,62 @@ function renderTeam(view, teamId) {
   if (t.gotwCount) chips.appendChild(chip("GOTW Features", t.gotwCount + "x"));
   view.appendChild(chips);
 
+  // Strength of Schedule — how hard this team's slate actually is, and what's left.
+  const sos = (DATA.sos || {})[String(teamId)];
+  if (sos) {
+    view.appendChild(sectionHead("Strength of Schedule", `#${sos.rank} of ${sos.teamCount} hardest`));
+    const sosCard = el("div", "card sos-card");
+
+    const head = el("div", "sos-head");
+    const dial = el("div", "sos-dial");
+    dial.appendChild(el("div", "sos-dial-val", String(sos.rating)));
+    dial.appendChild(el("div", "sos-dial-label", "SOS"));
+    // Colour tracks difficulty, not team identity — red = brutal, green = easy.
+    dial.style.setProperty("--sos-c", sos.rating >= 65 ? "var(--red)" : sos.rating >= 45 ? "#b8860b" : "#128a4d");
+    head.appendChild(dial);
+    const headWho = el("div", "sos-head-who");
+    headWho.appendChild(el("div", "sos-verdict", sos.verdict.toUpperCase()));
+    headWho.appendChild(el("div", "sos-sub", `Opponents ${sos.oppRecord.wins}-${sos.oppRecord.losses}${sos.oppRecord.ties ? "-" + sos.oppRecord.ties : ""} · ${sos.oppWinPct.toFixed(3)} win rate`));
+    headWho.appendChild(el("div", "sos-sub", "50 is an average slate for this league."));
+    head.appendChild(headWho);
+    sosCard.appendChild(head);
+
+    const split = el("div", "id-grid");
+    const cell2 = (val, label) => {
+      const d = el("div", "id-cell");
+      d.appendChild(el("div", "id-cell-val", String(val)));
+      d.appendChild(el("div", "id-cell-label", label));
+      return d;
+    };
+    if (sos.playedRating !== null) split.appendChild(cell2(sos.playedRating, `Played (${sos.gamesPlayed})`));
+    if (sos.remainingRating !== null) split.appendChild(cell2(sos.remainingRating, `Remaining (${sos.gamesRemaining})`));
+    split.appendChild(cell2("#" + sos.rank, "League rank"));
+    sosCard.appendChild(split);
+
+    if ((sos.toughestRemaining || []).length) {
+      sosCard.appendChild(el("div", "need-depth-label", "Toughest games left"));
+      for (const g of sos.toughestRemaining) {
+        const opp = team(g.opponentId);
+        const r = el("div", "sos-game row-tappable");
+        r.addEventListener("click", () => openTeam(g.opponentId));
+        r.appendChild(el("span", "sos-game-week", "W" + (g.week + 1)));
+        r.appendChild(logoImg(opp.abbr, "hist-logo"));
+        r.appendChild(el("span", "sos-game-opp", (g.home ? "vs " : "@ ") + opp.nick));
+        const meter = el("div", "sos-meter");
+        const fill = el("div", "sos-meter-fill");
+        fill.style.width = Math.max(4, Math.min(100, g.difficulty)) + "%";
+        fill.style.background = g.difficulty >= 65 ? "var(--red)" : g.difficulty >= 45 ? "#b8860b" : "#128a4d";
+        meter.appendChild(fill);
+        r.appendChild(meter);
+        r.appendChild(el("span", "sos-game-num", String(g.difficulty)));
+        sosCard.appendChild(r);
+      }
+    }
+    for (const note of sos.notes || []) sosCard.appendChild(el("div", "need-reason", "• " + note));
+    sosCard.appendChild(el("div", "news-disclaimer id-note", "Blends opponent record, team OVR, point differential, home/away, and your units vs theirs. EA's export has no scheme data, so unit strength comes from roster ratings."));
+    view.appendChild(sosCard);
+  }
+
   // Team Identity — the season's real box-score tendencies. Built for the GM
   // deciding what to build, change, or adapt: play-calling split, efficiency,
   // ball distribution, and where the defense actually bends.
