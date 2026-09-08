@@ -1,6 +1,6 @@
 # Persona avatars
 
-Square images, ~200x200+, served at `https://bully-league.github.io/avatars/<file>`
+Square images, ~200x200+, served at `$SITE_PUBLIC_URL/avatars/<file>`
 and shown as the round profile picture on news posts (Discord embeds + the site).
 
 Expected filenames (referenced from src/discord/leagueNews.ts's PERSONAS):
