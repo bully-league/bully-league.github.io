@@ -3237,13 +3237,18 @@ async function load() {
   history.replaceState(null, "", location.pathname + location.search);
 })();
 
-/* iOS install hint — Safari has no install prompt, so surface the one-time how-to. */
+/* iOS install hint — Safari has no install prompt, so surface the one-time how-to.
+   Only on iPhone and iPad, not yet installed, not dismissed. iPadOS 13+ Safari reports a
+   Mac user agent, so an iPad is a "Mac" with a touch screen (no Mac has one). */
+function iosInstallHintDue(nav, standalone, dismissed) {
+  const ios = /iphone|ipad|ipod/i.test(nav.userAgent || "") || (nav.platform === "MacIntel" && (nav.maxTouchPoints || 0) > 1);
+  return ios && !standalone && !dismissed;
+}
 (function iosHint() {
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   let dismissed = false;
   try { dismissed = localStorage.getItem("ios-hint-dismissed") === "1"; } catch {}
-  if (isIos && !standalone && !dismissed) {
+  if (iosInstallHintDue(navigator, standalone, dismissed)) {
     const hint = document.getElementById("ios-hint");
     hint.hidden = false;
     document.getElementById("ios-hint-close").addEventListener("click", () => {
