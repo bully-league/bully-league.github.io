@@ -25,10 +25,16 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin) return;
 
+  // The Updates tab's week files (updates/<season-key>.json) are never kept: every key
+  // ever opened, past seasons' included, would sit in the cache for good, and the only
+  // thing an offline copy could do is show an old sync's list beside newer totals. The
+  // tab says "couldn't load" offline instead (2026-10-16).
+  const keep = !/\/updates\/[^/]+\.json$/.test(url.pathname);
+
   event.respondWith(
     fetch(new Request(event.request, { cache: "no-cache" }))
       .then((res) => {
-        if (res.ok) {
+        if (res.ok && keep) {
           const copy = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }

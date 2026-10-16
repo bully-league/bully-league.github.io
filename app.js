@@ -2366,9 +2366,391 @@ function renderPlayers(view) {
   renderResults();
 }
 
+/* ---------- Player updates ----------
+   The weekly player-updates report on the website (commissioner's request, 2026-10-16).
+   The league runs website-only, so the Discord "player updates" post that listed each
+   sync's rating, dev trait, height/weight and position changes reached nobody. The bot
+   now records them per week: site.json carries the week list (playerUpdates.weeks, with
+   counts) and each week's players live in updates/<key>.json, fetched only when that
+   week is opened so site.json stays small.
+
+   A week's identity is its KEY ("s1-1-04"), which carries the season. Never its label:
+   "Week 5" comes round every season, and on 2026-10-12 everything keyed by week
+   without the season showed or merged last season's weeks. Selection, the file fetched
+   and the cache below all go by key. */
+
+const UPDATE_WEEKS_MAX = 30; // the contract's cap; a bigger list is cut, not trusted
+const updatesView = { week: null, team: "", group: "", type: "", showAll: false }; // week = key; null = newest
+const updateWeekCache = new Map(); // key -> { updatedAt, status: "loading" | "ok" | "error", data, promise }
+
+/* Change-type filters. "Ratings" is any rating move, the overall included, so a player
+   whose overall moved is a ratings change even when no single rating is listed. */
+const UPDATE_TYPES = [
+  ["", "All changes"],
+  ["ratings", "Ratings"],
+  ["dev", "Dev trait"],
+  ["physical", "Height & weight"],
+  ["position", "Position"],
+];
+
+// Shown wherever a height/weight change is (tag tooltips, the summary chip, the legend).
+// It says only what the Discord report said (offseasonPlayerReport.ts, weeklyReports.ts).
+// The first draft went on to say what the change must mean; on a public page that
+// points at a team owner, and the site can't know who or why (review, 2026-10-16).
+const PHYSICAL_NOTE = "Height and weight never change through normal play: EA's progression only moves ratings and dev traits.";
+
+/** The week list from site.json, newest first as the bot wrote it. An older site.json has none. */
+function updateWeekList() {
+  const weeks = DATA && DATA.playerUpdates && DATA.playerUpdates.weeks;
+  if (!Array.isArray(weeks)) return [];
+  return weeks.filter((w) => w && typeof w.key === "string" && w.key).slice(0, UPDATE_WEEKS_MAX);
+}
+
+/** What the page calls a week in its text. The contract always sends a label; the key stands in if one doesn't. */
+function updateWeekName(w) {
+  return w.label || w.key;
+}
+
+/* The week being viewed: the one picked, by key. With nothing picked (or the picked key
+   gone, as in a new season's list) it's the newest week that has players: a sync that
+   changed nobody is a real week, but opening the tab onto "Nothing changed" when last
+   week has 40 players hides the report (2026-10-16). No week has any: the newest. */
+function selectedUpdateWeek(weeks) {
+  return weeks.find((w) => w.key === updatesView.week) || weeks.find((w) => w.counts && w.counts.players) || weeks[0] || null;
+}
+
+/* Pill text: weeks stay as named, preseason and playoff names are shortened to fit a
+   pill. Offseason stages come as "Offseason · Stage 6" and stay whole: the stage is
+   what tells one offseason pill from the next. Two pills that would read the same
+   (this offseason's Stage 6 and last season's, both on the list) get their first-sync
+   date; any still alike after that (same day) are numbered in the order they happened,
+   oldest = 1, so the numbers don't shift as newer weeks arrive (2026-10-16). */
+function updatePillLabel(w) {
+  const label = String(updateWeekName(w));
+  const pre = label.match(/^Preseason Week (\d+)$/);
+  if (pre) return "Pre " + pre[1];
+  if (label === "Conference Championship") return "Conference";
+  return label.replace(/ Round$/, "");
+}
+function shortDate(iso) {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+function updatePillLabels(weeks) {
+  const count = (list) => list.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map());
+  const base = weeks.map(updatePillLabel);
+  const baseCount = count(base);
+  const dated = base.map((label, i) => {
+    if (baseCount.get(label) === 1) return label;
+    const date = shortDate(weeks[i].recordedAt);
+    return date ? `${label} · ${date}` : label;
+  });
+  // The list is newest first, so the nth of a clashing label seen is the (total - n + 1)th oldest.
+  const total = count(dated);
+  const seen = new Map();
+  return dated.map((label) => {
+    if (total.get(label) === 1) return label;
+    const n = (seen.get(label) || 0) + 1;
+    seen.set(label, n);
+    return `${label} (${total.get(label) - n + 1})`;
+  });
+}
+/** A pill's tooltip: the week's full name and when it was first synced, to the minute. */
+function updatePillTitle(w) {
+  const d = new Date(w.recordedAt);
+  return isNaN(d.getTime()) ? String(updateWeekName(w)) : `${updateWeekName(w)} · first synced ${d.toLocaleString()}`;
+}
+
+function updateWeekUrl(key) {
+  return "updates/" + encodeURIComponent(key) + ".json";
+}
+
+/**
+ * The week's player file, fetched once per (key, updatedAt): a later sync that touched
+ * the week bumps updatedAt in site.json, which fetches it fresh. A file that isn't the
+ * week asked for (wrong key, or the service worker's offline index.html) is an error,
+ * never shown as that week.
+ */
+function loadUpdateWeek(week) {
+  const hit = updateWeekCache.get(week.key);
+  if (hit && hit.updatedAt === week.updatedAt) return hit;
+  const entry = { updatedAt: week.updatedAt, status: "loading", data: null, stale: false, promise: null };
+  entry.promise = fetch(updateWeekUrl(week.key), { cache: "no-cache" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d || d.key !== week.key || !Array.isArray(d.players)) throw new Error("not this week's file");
+      entry.status = "ok";
+      entry.data = d;
+      // The right week, but maybe not the same sync as site.json: GitHub Pages' edge
+      // keeps each URL ~10 minutes, so a fresh site.json can arrive with the week's
+      // previous file (or the reverse). The totals (from site.json) and the list would
+      // then disagree with nothing to say why. The updatedAt check above can't catch it:
+      // site.json loads once per page, so it never changes within a visit (2026-10-16).
+      entry.stale = d.updatedAt !== week.updatedAt;
+      return entry;
+    })
+    .catch(() => {
+      entry.status = "error";
+      return entry;
+    });
+  updateWeekCache.set(week.key, entry);
+  return entry;
+}
+
+function updateMatchesType(p, type) {
+  if (type === "ratings") return (p.ovr && p.ovr.from !== p.ovr.to) || (p.ratings || []).length > 0;
+  if (type === "dev") return !!p.dev;
+  if (type === "physical") return (p.physical || []).length > 0;
+  if (type === "position") return !!p.position;
+  return true;
+}
+
+/* Team: "" = all, "fa" = free agents (teamId null), else a teamId. Position group goes
+   by the FA grid's groups (POS_TO_GROUP: every code, legacy ones too, has one), on the
+   player's current position or the one he moved from, so filtering WR still shows the
+   WR who became a TE this week. */
+function filterUpdatePlayers(players, f) {
+  return players.filter((p) => {
+    if (f.team === "fa" ? p.teamId != null : f.team && String(p.teamId) !== f.team) return false;
+    if (f.group && POS_TO_GROUP[p.pos] !== f.group && !(p.position && POS_TO_GROUP[p.position.from] === f.group)) return false;
+    return updateMatchesType(p, f.type);
+  });
+}
+
+/** The contract's order, kept here too: biggest overall move first, then by name. */
+function sortUpdatePlayers(players) {
+  const swing = (p) => (p.ovr ? Math.abs(p.ovr.to - p.ovr.from) : 0);
+  return players.slice().sort((a, b) => swing(b) - swing(a) || String(a.name).localeCompare(String(b.name)));
+}
+
+/* The bot labels ratings the audit store's way ("Throw Acc (Short)", "Play Rec"); the
+   chips use the site's own abbreviations (SAC, PRC) so they read like every other
+   ratings column here. An unknown label shows as it came. */
+const RATING_LABEL_ABBR = (() => {
+  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
+  // No prototype: a label that normalises to "constructor" or "tostring" must miss and
+  // show as written, not find Object's own function and throw on .toUpperCase().
+  const m = Object.create(null);
+  for (const [k, name] of Object.entries(RATING_NAMES)) m[norm(name)] = k;
+  Object.assign(m, {
+    throwaccshort: "sac", throwaccmid: "mac", throwaccdeep: "dac", speccatch: "spc",
+    routerunshort: "srr", routerunmed: "mrr", routerundeep: "drr", truck: "trk",
+    blockshed: "bsh", playrec: "prc",
+  });
+  return m;
+})();
+function ratingAbbr(label) {
+  const k = RATING_LABEL_ABBR[String(label).toLowerCase().replace(/[^a-z]/g, "")];
+  return k ? k.toUpperCase() : String(label);
+}
+
+function signedDelta(n) {
+  return n === 0 ? "±0" : (n > 0 ? "+" : "−") + Math.abs(n);
+}
+
+function updateRow(p) {
+  const physical = p.physical || [];
+  const known = playerById(p.id);
+  // A player since released and gone from every list has no card to open.
+  const r = el("div", "upd-row" + (physical.length ? " upd-flag" : "") + (known ? " row-tappable" : ""));
+  if (known) r.addEventListener("click", () => openPlayerCard(p.id));
+
+  const t = p.teamId != null ? team(p.teamId) : null;
+  r.appendChild(t ? logoImg(t.abbr, "upd-logo") : el("span", "upd-fa", "FA"));
+
+  const main = el("div", "upd-main");
+  const top = el("div", "upd-top");
+  top.appendChild(el("span", "upd-name", p.name || "Unknown"));
+  top.appendChild(el("span", "upd-pos", `${p.pos || "—"} · ${t ? t.abbr : "Free agent"}`));
+  main.appendChild(top);
+
+  const tags = el("div", "upd-tags");
+  for (const ph of physical) {
+    const tag = el("span", "upd-tag upd-phys", `🚨 ${ph.label} ${ph.fromText ?? ph.from} → ${ph.toText ?? ph.to}`);
+    tag.title = PHYSICAL_NOTE;
+    tags.appendChild(tag);
+  }
+  if (p.dev) {
+    const up = (DEV_ORDER[p.dev.to] ?? 0) > (DEV_ORDER[p.dev.from] ?? 0);
+    const dev = el("span", "upd-tag upd-dev");
+    dev.title = `Dev trait ${up ? "up" : "down"}: ${p.dev.from} → ${p.dev.to}`;
+    const badge = (label) => el("span", "dev-badge dev-" + String(label).toLowerCase().replace(/[^a-z]/g, ""), label);
+    dev.appendChild(badge(p.dev.from));
+    dev.appendChild(el("span", "upd-arrow " + (up ? "up" : "down"), up ? "▲" : "▼"));
+    dev.appendChild(badge(p.dev.to));
+    tags.appendChild(dev);
+  }
+  if (p.position) {
+    const move = el("span", "upd-tag upd-move", `${p.position.from} → ${p.position.to}`);
+    move.title = "Position change";
+    tags.appendChild(move);
+  }
+  if (tags.childNodes.length) main.appendChild(tags);
+
+  const ratings = p.ratings || [];
+  if (ratings.length) {
+    const chips = el("div", "upd-chips");
+    for (const rt of ratings) {
+      const d = rt.to - rt.from;
+      const chip = el("span", "upd-chip" + (d > 0 ? " up" : d < 0 ? " down" : ""), `${ratingAbbr(rt.label)} ${signedDelta(d)}`);
+      chip.title = `${rt.label}: ${rt.from} → ${rt.to}`;
+      chips.appendChild(chip);
+    }
+    main.appendChild(chips);
+  }
+  r.appendChild(main);
+
+  const ovr = el("div", "upd-ovr");
+  const d = p.ovr ? p.ovr.to - p.ovr.from : 0;
+  const val = el("div", "upd-ovr-val");
+  if (d) {
+    val.appendChild(el("span", "upd-ovr-from", `${p.ovr.from} → `));
+    val.appendChild(document.createTextNode(String(p.ovr.to)));
+  } else {
+    val.textContent = p.ovr ? String(p.ovr.to) : "—";
+  }
+  ovr.appendChild(val);
+  ovr.appendChild(el("div", "delta " + (d > 0 ? "up" : d < 0 ? "down" : "flat"), d > 0 ? `▲ ${d} OVR` : d < 0 ? `▼ ${-d} OVR` : "OVR"));
+  r.appendChild(ovr);
+  return r;
+}
+
+function renderUpdates(view) {
+  const weeks = updateWeekList();
+  const week = selectedUpdateWeek(weeks);
+  const changed = (week && week.counts && week.counts.players) || 0;
+  view.appendChild(sectionHead("Player Updates", week ? `${changed} player${changed === 1 ? "" : "s"} changed` : ""));
+  if (!week) {
+    const card = el("div", "card");
+    card.appendChild(el("div", "empty", "No player updates recorded yet. Each sync compares every player with the one before, and the week's rating, dev trait, height/weight and position changes land here."));
+    view.appendChild(card);
+    return;
+  }
+
+  // Week pills, newest first. One scrolling row on phones (a season is 20-odd weeks).
+  const labels = updatePillLabels(weeks);
+  const pills = el("div", "week-pills upd-weeks");
+  let activePill = null;
+  weeks.forEach((w, i) => {
+    const pill = el("button", "week-pill" + (w.key === week.key ? " active" : ""), labels[i]);
+    pill.type = "button";
+    pill.title = updatePillTitle(w);
+    pill.addEventListener("click", () => {
+      if (w.key === week.key) return;
+      updatesView.week = w.key;
+      updatesView.showAll = false;
+      render();
+    });
+    if (w.key === week.key) activePill = pill;
+    pills.appendChild(pill);
+  });
+  view.appendChild(pills);
+  if (activePill) pills.scrollLeft = Math.max(0, activePill.offsetLeft - pills.clientWidth / 2 + activePill.offsetWidth / 2);
+
+  const first = shortDate(week.recordedAt);
+  const last = isNaN(new Date(week.updatedAt).getTime()) ? "" : timeAgo(week.updatedAt);
+  view.appendChild(el("div", "upd-meta", [updateWeekName(week), first && `first synced ${first}`, last && `last updated ${last} ago`].filter(Boolean).join(" · ")));
+
+  // Whole-week totals from site.json, there before the week's file arrives.
+  const c = week.counts || {};
+  const sum = el("div", "team-chips upd-summary");
+  const chip = (label, value, cls, title) => {
+    const d = el("div", "team-chip" + (cls ? " " + cls : ""));
+    d.appendChild(el("div", "team-chip-val", String(value ?? 0)));
+    d.appendChild(el("div", "team-chip-label", label));
+    if (title) d.title = title;
+    sum.appendChild(d);
+  };
+  chip("Players", c.players);
+  chip("OVR up", c.ovrUp, c.ovrUp ? "upd-up" : "");
+  chip("OVR down", c.ovrDown, c.ovrDown ? "upd-down" : "");
+  chip("Dev trait", c.devTrait);
+  chip(c.physical ? "🚨 Ht / Wt" : "Ht / Wt", c.physical, c.physical ? "upd-alert" : "", PHYSICAL_NOTE);
+  chip("Position", c.position);
+  view.appendChild(sum);
+
+  const controls = el("div", "fa-controls upd-controls");
+  const teamSel = el("select", "team-select");
+  teamSel.setAttribute("aria-label", "Team");
+  teamSel.appendChild(new Option("All teams", ""));
+  for (const t of [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick))) teamSel.appendChild(new Option(`${t.city} ${t.nick}`, String(t.teamId)));
+  teamSel.appendChild(new Option("Free agents", "fa"));
+  teamSel.value = updatesView.team;
+  teamSel.addEventListener("change", () => { updatesView.team = teamSel.value; updatesView.showAll = false; renderList(); });
+  controls.appendChild(teamSel);
+  const groupSel = el("select", "team-select");
+  groupSel.setAttribute("aria-label", "Position group");
+  groupSel.appendChild(new Option("All positions", ""));
+  for (const g of DRAFT_GROUPS) groupSel.appendChild(new Option(g === "Specialists" ? "K / P / LS" : g, g));
+  groupSel.value = updatesView.group;
+  groupSel.addEventListener("change", () => { updatesView.group = groupSel.value; updatesView.showAll = false; renderList(); });
+  controls.appendChild(groupSel);
+  view.appendChild(controls);
+
+  const typePills = el("div", "week-pills");
+  for (const [key, label] of UPDATE_TYPES) {
+    const pill = el("button", "week-pill" + (updatesView.type === key ? " active" : ""), label);
+    pill.type = "button";
+    pill.addEventListener("click", () => {
+      updatesView.type = key;
+      updatesView.showAll = false;
+      for (const b of typePills.children) b.classList.toggle("active", b === pill);
+      renderList();
+    });
+    typePills.appendChild(pill);
+  }
+  view.appendChild(typePills);
+
+  const listWrap = el("div");
+  view.appendChild(listWrap);
+
+  function renderList() {
+    // Same scroll guard as the Players/FA grids: a filter tap never jumps the page.
+    const y = window.scrollY;
+    listWrap.replaceChildren();
+    const entry = loadUpdateWeek(week);
+    const name = updateWeekName(week);
+    if (entry.status === "loading") {
+      listWrap.appendChild(el("div", "card")).appendChild(el("div", "empty", `Loading ${name}…`));
+      entry.promise.then(() => { if (listWrap.isConnected) renderList(); });
+      return;
+    }
+    if (entry.status === "error") {
+      const card = el("div", "card");
+      card.appendChild(el("div", "empty", `Couldn't load ${name}'s updates.`));
+      const retry = el("button", "trade-cta trade-cta-secondary upd-retry", "Try again");
+      retry.type = "button";
+      retry.addEventListener("click", () => { updateWeekCache.delete(week.key); renderList(); });
+      card.appendChild(retry);
+      listWrap.appendChild(card);
+      return;
+    }
+
+    const all = entry.data.players;
+    const rows = sortUpdatePlayers(filterUpdatePlayers(all, updatesView));
+    // Said, not hidden: the copy may be a sync behind or ahead of the totals above.
+    if (entry.stale) listWrap.appendChild(el("div", "upd-meta upd-stale", "This list is from a different sync than the totals above. Refresh in a few minutes for the latest."));
+    const card = el("div", "card upd-list");
+    const CHUNK = 120;
+    for (const p of updatesView.showAll ? rows : rows.slice(0, CHUNK)) card.appendChild(updateRow(p));
+    if (!rows.length) card.appendChild(el("div", "empty", all.length ? "No players match these filters." : `Nothing changed for any player in ${name}.`));
+    listWrap.appendChild(card);
+    if (!updatesView.showAll && rows.length > CHUNK) {
+      const more = el("button", "trade-cta fa-more upd-more", `Show all ${rows.length} players`);
+      more.type = "button";
+      more.addEventListener("click", () => { updatesView.showAll = true; renderList(); });
+      listWrap.appendChild(more);
+    }
+    window.scrollTo(0, y);
+  }
+  renderList();
+
+  view.appendChild(el("div", "news-disclaimer", "🚨 " + PHYSICAL_NOTE + " Dev traits move only at the game's own milestones. A change that went back within the week drops out; tap a player for his full card."));
+}
+
 /* ---------- App shell ---------- */
 
-const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, freeagents: renderFreeAgents, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, news: renderNews, trade: renderTrade };
+const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, freeagents: renderFreeAgents, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, updates: renderUpdates, news: renderNews, trade: renderTrade };
 let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
