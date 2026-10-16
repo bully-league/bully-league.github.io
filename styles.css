@@ -387,7 +387,7 @@ a.card:active { background: var(--surface-2); }
 .wire-tag {
   margin-left: auto; flex: none;
   font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9.5px;
-  letter-spacing: .08em; padding: 3px 7px; border-radius: 5px;
+  letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px;
 }
 .wire-tag.out { color: var(--down); background: rgba(201,58,42,.1); }
 .wire-tag.tx-signed { margin-left: 0; color: var(--up); background: rgba(18,138,77,.12); }
@@ -878,9 +878,10 @@ a.card:active { background: var(--surface-2); }
 .fit-badge.fit-depth { color: var(--text-dim); background: var(--surface-2); }
 .fit-badge.fit-luxury { color: #7b4fd0; background: rgba(123,79,208,.12); }
 .tab .ts { display: none; }
-/* Short labels on phones, and on narrow desktops too: with ten tabs (Updates joined on
-   2026-10-16) the full-label nav needs ~1100px, and below that it ran off both edges. */
-@media (max-width: 1179px) {
+/* Short labels on phones, and on narrow desktops too: with eleven tabs (Updates and
+   Transactions joined on 2026-10-16) the full-label nav is ~1245px wide, so full
+   labels wait for a 1280px window; below that the nav would scroll. */
+@media (max-width: 1279px) {
   .tab .tl { display: none; }
   .tab .ts { display: inline; }
 }
@@ -950,7 +951,29 @@ a.card:active { background: var(--surface-2); }
   .tab .pl { display: none; }
   .tab .ps { display: inline; }
 }
-/* Below 360 (320px phones), 32px tabs: 8px keeps "Players", the widest left, whole. */
+/* Eleven tabs since Transactions ("Moves") joined (2026-10-16). Equal widths are 32.7px
+   a tab at 360px, narrower than "Players" at 9px, and a 40px floor per tab made the bar
+   440px wide, so on every phone narrower than that (every current iPhone) Trade sat
+   off-screen (review, 2026-10-16). So below 900px a tab is never narrower than its own
+   label, the spare width is shared out equally, and the labels stay at 9px down to
+   360px. Where even the labels alone don't fit (the narrowest phones), the bar scrolls
+   sideways and the shadows at its ends say so; the "local" white covers ride with the
+   tabs and hide the shadow at an end the bar has reached, and both when it fits. */
+@media (max-width: 899px) {
+  .tabbar {
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    background:
+      linear-gradient(to right, #fff 40%, rgba(255,255,255,0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, #fff 40%, rgba(255,255,255,0)) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(16,21,27,.16), rgba(16,21,27,0)) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(16,21,27,.16), rgba(16,21,27,0)) right center / 12px 100% no-repeat scroll,
+      rgba(255,255,255,.96);
+  }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tab { flex: 1 1 0; min-width: max-content; padding-left: 2px; padding-right: 2px; }
+  .tab span { overflow: visible; }
+}
+/* Below 360 (320px phones): 8px keeps all eleven on one screen down to about 312px. */
 @media (max-width: 359px) {
   .tab { font-size: 8px; }
 }
@@ -1050,9 +1073,14 @@ a.card:active { background: var(--surface-2); }
   a.card:hover { border-color: #b9c0c8; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16,21,27,.1); }
 }
 
-@media (min-width: 900px) and (max-width: 1179px) {
+@media (min-width: 900px) and (max-width: 1279px) {
   .tabbar { gap: 2px; }
   .tab { padding: 10px 11px 12px; }
+}
+/* Eleven short-label tabs are ~950px at that padding: a hair tighter on the narrowest
+   desktops so the nav fits a 900px window instead of scrolling. */
+@media (min-width: 900px) and (max-width: 1023px) {
+  .tab { padding: 10px 8px 12px; gap: 6px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1213,39 +1241,44 @@ a.card:active { background: var(--surface-2); }
 .sos-meter-fill { height: 100%; border-radius: 3px; }
 .sos-game-num { font-variant-numeric: tabular-nums; font-weight: 700; width: 24px; text-align: right; color: var(--text-dim); }
 
-/* ---------- Player updates (weekly rating / dev / height-weight / position changes) ---------- */
+/* ---------- Weekly logs (Updates + Transactions share these) ---------- */
 /* Week pills: one scrolling row on phones, newest at the left (a season is 20-odd weeks,
    which would wrap into five rows); desktop wraps like every other pill row.
    position: relative makes the row the pills' offsetParent, so the active pill's
    offsetLeft is measured from the row, not the page: without it the centring in
-   renderUpdates was off by the centred .view's margin, ~64px at 768px (2026-10-16). */
-.upd-weeks {
+   appendLogWeekPills was off by the centred .view's margin, ~64px at 768px (2026-10-16). */
+.log-weeks {
   position: relative;
   flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   margin: 0 -14px 8px; padding: 0 14px 2px;
 }
-.upd-weeks::-webkit-scrollbar { display: none; }
-.upd-weeks .week-pill { flex: none; }
-.upd-meta { font-size: 11.5px; color: var(--text-faint); margin: 0 2px; }
-.upd-meta.upd-stale { color: var(--text-dim); margin: 0 2px 8px; }
-/* Team + position side by side even on a 375px phone. */
-.upd-controls .team-select { flex: 1 1 140px; min-width: 0; }
-.upd-summary { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); margin: 10px 0 12px; }
-.upd-summary .team-chip { padding: 7px 4px; }
-.upd-summary .team-chip-val { font-size: 17px; }
+.log-weeks::-webkit-scrollbar { display: none; }
+.log-weeks .week-pill { flex: none; }
+.log-meta { font-size: 11.5px; color: var(--text-faint); margin: 0 2px; }
+.log-meta.log-stale { color: var(--text-dim); margin: 0 2px 8px; }
+/* Two filters side by side even on a 375px phone. */
+.log-controls .team-select { flex: 1 1 140px; min-width: 0; }
+.log-summary { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); margin: 10px 0 12px; }
+.log-summary .team-chip { padding: 7px 4px; }
+.log-summary .team-chip-val { font-size: 17px; }
+.log-retry { max-width: 220px; margin: 0 auto 18px; }
+
+/* ---------- Player updates (weekly rating / dev / height-weight / position changes) ---------- */
 .team-chip.upd-up .team-chip-val { color: var(--up); }
 .team-chip.upd-down .team-chip-val { color: var(--down); }
 .team-chip.upd-alert { border-color: rgba(201,58,42,.5); background: rgba(201,58,42,.07); }
 .team-chip.upd-alert .team-chip-val, .team-chip.upd-alert .team-chip-label { color: var(--down); }
-.upd-row {
+.upd-row, .tx-row {
   position: relative;
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--edge);
 }
-.upd-row:last-child { border-bottom: 0; }
-.upd-row.row-tappable:hover { background: var(--surface-2); }
+.upd-row:last-child, .tx-list > :last-child { border-bottom: 0; }
+.upd-row.row-tappable:hover, .tx-row.row-tappable:hover, .tx-player.row-tappable:hover { background: var(--surface-2); }
+/* They take keyboard focus (logTappable): show where it is, the way the tab bar does. */
+.upd-row.row-tappable:focus-visible, .tx-row.row-tappable:focus-visible, .tx-player.row-tappable:focus-visible { outline: 2px solid var(--red-bright); outline-offset: -2px; }
 /* Height/weight never changes through play: the row carries a red rail and tint. */
 .upd-row.upd-flag { background: rgba(201,58,42,.06); }
 /* ...and keeps it on hover: the plain tappable hover (3 classes) outranks the flag (2),
@@ -1255,22 +1288,22 @@ a.card:active { background: var(--surface-2); }
   content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
   background: var(--down);
 }
-.upd-logo { width: 26px; height: 26px; flex: none; margin-top: 1px; }
-.upd-fa {
+.upd-logo, .tx-logo { width: 26px; height: 26px; flex: none; margin-top: 1px; }
+.upd-fa, .tx-fa {
   width: 26px; height: 26px; flex: none; margin-top: 1px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; background: var(--surface-2); border: 1px solid var(--edge);
   font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9px; letter-spacing: .04em;
   color: var(--text-dim);
 }
-.upd-main { flex: 1; min-width: 0; }
-.upd-top { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
-.upd-name {
+.upd-main, .tx-main { flex: 1; min-width: 0; }
+.upd-top, .tx-top { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.upd-name, .tx-name {
   font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 88%; font-size: 15px;
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.upd-pos { flex: none; font-size: 11px; color: var(--text-faint); }
-.upd-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.upd-pos, .tx-pos { flex: none; font-size: 11px; color: var(--text-faint); }
+.upd-tags, .tx-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .upd-tag {
   display: inline-flex; align-items: center; gap: 4px;
   font-family: "Archivo", sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .04em;
@@ -1293,15 +1326,92 @@ a.card:active { background: var(--surface-2); }
 }
 .upd-chip.up { color: var(--up); background: rgba(18,138,77,.1); }
 .upd-chip.down { color: var(--down); background: rgba(201,58,42,.09); }
-.upd-ovr { flex: none; text-align: right; }
+.upd-ovr, .tx-ovr { flex: none; text-align: right; }
 .upd-ovr-val {
   font-family: "Archivo", sans-serif; font-weight: 900; font-size: 18px; line-height: 1.15;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .upd-ovr-from { font-size: 13px; font-weight: 700; color: var(--text-faint); }
 .upd-ovr .delta { margin-top: 2px; font-size: 11px; white-space: nowrap; }
-.upd-retry { max-width: 220px; margin: 0 auto 18px; }
 @media (min-width: 900px) {
-  .upd-weeks { flex-wrap: wrap; overflow: visible; margin: 0 0 8px; padding: 0; }
-  .upd-row { padding: 11px 18px; }
+  .log-weeks { flex-wrap: wrap; overflow: visible; margin: 0 0 8px; padding: 0; }
+  .upd-row, .tx-row { padding: 11px 18px; }
+}
+
+/* ---------- Transactions (every roster move, week by week) ---------- */
+/* Seven totals: four across on a phone instead of three rows of three. A kind with
+   none this week is dimmed, so the moves that happened stand out. */
+.tx-summary { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); }
+.tx-summary .team-chip.tx-zero .team-chip-val { color: var(--text-faint); font-weight: 700; }
+/* The kind badge: one colour per kind, the wire's colours where the wire has the kind. */
+.tx-badge {
+  display: inline-flex; align-items: center;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 9.5px;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 5px;
+  background: var(--surface-2); color: var(--text-dim);
+}
+.tx-badge-trade { color: var(--gold); background: rgba(184,134,11,.13); }
+.tx-badge-signed { color: var(--up); background: rgba(18,138,77,.12); }
+.tx-badge-resigned { color: #0f6f7a; background: rgba(15,111,122,.11); }
+.tx-badge-released { color: var(--down); background: rgba(201,58,42,.1); }
+.tx-badge-drafted { color: #6b3fc9; background: rgba(123,79,208,.12); }
+/* An undrafted rookie's signing: a draft-class entry, but a signing, so the signing green. */
+.tx-badge-drafted.tx-badge-udfa { color: var(--up); background: rgba(18,138,77,.12); }
+.tx-badge-left { color: var(--text-dim); background: var(--surface-2); }
+/* A long name keeps its place: the position / age / team line gives way first. */
+.tx-name { flex: 0 1 auto; }
+.tx-pos { flex: 0 1000 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-detail { font-size: 11.5px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.tx-ovr-val {
+  font-family: "Archivo", sans-serif; font-weight: 900; font-size: 18px; line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.tx-ovr-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--text-faint); }
+
+/* A trade: a head line, then one block per team with its colour rail and what it received. */
+.tx-trade { padding: 10px 14px 12px; border-bottom: 1px solid var(--edge); }
+.tx-trade-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tx-trade-teams {
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 88%; font-size: 13px;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-when { margin-left: auto; flex: none; font-size: 11px; color: var(--text-faint); }
+.tx-sides { display: grid; gap: 8px; grid-template-columns: 100%; }
+.tx-side {
+  border: 1px solid var(--edge); border-left: 3px solid var(--rail, var(--edge));
+  border-radius: 8px; background: var(--surface);
+  padding: 7px 0 4px; min-width: 0;
+}
+/* The team the list is filtered to: its side of each deal reads first at a glance. */
+.tx-side.tx-focus { background: var(--surface-2); }
+.tx-side-head {
+  display: flex; align-items: center; gap: 7px; padding: 0 10px 5px;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 88%;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim);
+}
+.tx-side-logo { width: 20px; height: 20px; flex: none; }
+.tx-player { display: flex; align-items: center; gap: 9px; padding: 5px 10px; min-width: 0; }
+.tx-player .avatar.tx-av { width: 30px; height: 30px; font-size: 10px; border-width: 1.5px; flex: none; }
+.tx-player-who { flex: 1; min-width: 0; }
+.tx-player-name {
+  font-family: "Archivo", sans-serif; font-weight: 800; font-stretch: 88%; font-size: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-player-sub { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.tx-player .tx-ovr-val { font-size: 16px; }
+.tx-none { padding: 4px 10px 6px; font-size: 12px; font-style: italic; color: var(--text-faint); }
+/* The home wire's way into this tab. No border of its own: the wire's last row already
+   draws the line above it, and a second one made a 2px rule (review, 2026-10-16). */
+.rail-more {
+  display: block; width: 100%; padding: 10px 14px; text-align: right;
+  background: none; border: 0; cursor: pointer;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .02em;
+  color: var(--red);
+}
+.rail-more:hover { background: var(--surface-2); }
+@media (min-width: 900px) {
+  .tx-trade { padding: 12px 18px 14px; }
+  /* Sides of a deal next to each other: two or three across, a fourth wraps. */
+  .tx-sides { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 }

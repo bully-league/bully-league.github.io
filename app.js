@@ -701,7 +701,12 @@ function injuryRow(inj) {
   return row;
 }
 
-const TX_LABEL = { signed: "SIGN", dropped: "CUT", traded: "TRADE" };
+/* One word per kind of move, for the home page's wire and the Transactions tab alike.
+   The wire said SIGN / CUT where the tab says Signed / Released (review, 2026-10-16);
+   both draw them in capitals. The wire's own kinds (signed / dropped / traded) map
+   onto the tab's. */
+const TX_BADGE = { trade: "Trade", signed: "Signed", released: "Released", resigned: "Re-signed", drafted: "Drafted", left: "Left league" };
+const TX_LABEL = { signed: TX_BADGE.signed, dropped: TX_BADGE.released, traded: TX_BADGE.trade };
 
 function txRow(tx) {
   const row = el("div", "wire-row");
@@ -802,7 +807,14 @@ function renderHome(view) {
   }
   if ((DATA.transactions || []).length) {
     rail.appendChild(sectionHead("Transactions", ""));
-    rail.appendChild(railCard("The wire", DATA.transactions.slice(0, 8).map(txRow)));
+    // The wire is only the latest few moves; the full week-by-week log is its own tab
+    // (2026-10-16), and this is the way there from the front page.
+    const wire = railCard("The wire", DATA.transactions.slice(0, 8).map(txRow));
+    const all = el("button", "rail-more", "All transactions →");
+    all.type = "button";
+    all.addEventListener("click", () => showTab("transactions"));
+    wire.appendChild(all);
+    rail.appendChild(wire);
   }
 
   page.appendChild(main);
@@ -2366,57 +2378,40 @@ function renderPlayers(view) {
   renderResults();
 }
 
-/* ---------- Player updates ----------
-   The weekly player-updates report on the website (commissioner's request, 2026-10-16).
-   The league runs website-only, so the Discord "player updates" post that listed each
-   sync's rating, dev trait, height/weight and position changes reached nobody. The bot
-   now records them per week: site.json carries the week list (playerUpdates.weeks, with
-   counts) and each week's players live in updates/<key>.json, fetched only when that
-   week is opened so site.json stays small.
+/* ---------- Weekly logs: what the Updates and Transactions tabs share ----------
+   Two of the commissioner's 2026-10-16 requests have the same shape. The league runs
+   website-only, so reports that were Discord posts (player updates, transactions) now
+   live on the site as logs, week by week: site.json lists a log's weeks, newest first,
+   with their counts, and each week's rows live in their own file, fetched only when
+   that week is opened so site.json stays small. Both tabs take their week pills and
+   their names, the meta line, summary chips, filters, loading / error / stale states
+   and "Show all" from here, so they read as one design, the same week has the same
+   pill in both, and a fix to one is a fix to both.
 
    A week's identity is its KEY ("s1-1-04"), which carries the season. Never its label:
    "Week 5" comes round every season, and on 2026-10-12 everything keyed by week
    without the season showed or merged last season's weeks. Selection, the file fetched
-   and the cache below all go by key. */
+   and the caches all go by key. */
 
-const UPDATE_WEEKS_MAX = 30; // the contract's cap; a bigger list is cut, not trusted
-const updatesView = { week: null, team: "", group: "", type: "", showAll: false }; // week = key; null = newest
-const updateWeekCache = new Map(); // key -> { updatedAt, status: "loading" | "ok" | "error", data, promise }
-
-/* Change-type filters. "Ratings" is any rating move, the overall included, so a player
-   whose overall moved is a ratings change even when no single rating is listed. */
-const UPDATE_TYPES = [
-  ["", "All changes"],
-  ["ratings", "Ratings"],
-  ["dev", "Dev trait"],
-  ["physical", "Height & weight"],
-  ["position", "Position"],
-];
-
-// Shown wherever a height/weight change is (tag tooltips, the summary chip, the legend).
-// It says only what the Discord report said (offseasonPlayerReport.ts, weeklyReports.ts).
-// The first draft went on to say what the change must mean; on a public page that
-// points at a team owner, and the site can't know who or why (review, 2026-10-16).
-const PHYSICAL_NOTE = "Height and weight never change through normal play: EA's progression only moves ratings and dev traits.";
-
-/** The week list from site.json, newest first as the bot wrote it. An older site.json has none. */
-function updateWeekList() {
-  const weeks = DATA && DATA.playerUpdates && DATA.playerUpdates.weeks;
+/** A log's week list from site.json, newest first as the bot wrote it, capped. An older site.json has no log at all. */
+function logWeekList(log, max) {
+  const weeks = log && log.weeks;
   if (!Array.isArray(weeks)) return [];
-  return weeks.filter((w) => w && typeof w.key === "string" && w.key).slice(0, UPDATE_WEEKS_MAX);
+  return weeks.filter((w) => w && typeof w.key === "string" && w.key).slice(0, max);
 }
 
 /** What the page calls a week in its text. The contract always sends a label; the key stands in if one doesn't. */
-function updateWeekName(w) {
+function logWeekName(w) {
   return w.label || w.key;
 }
 
 /* The week being viewed: the one picked, by key. With nothing picked (or the picked key
-   gone, as in a new season's list) it's the newest week that has players: a sync that
-   changed nobody is a real week, but opening the tab onto "Nothing changed" when last
-   week has 40 players hides the report (2026-10-16). No week has any: the newest. */
-function selectedUpdateWeek(weeks) {
-  return weeks.find((w) => w.key === updatesView.week) || weeks.find((w) => w.counts && w.counts.players) || weeks[0] || null;
+   gone, as in a new season's list) it's the newest week with something in it (its
+   counts[countKey]): a sync that changed nothing is a real week, but opening a tab onto
+   "Nothing changed" when last week has 40 rows hides the report (2026-10-16). No week
+   has any: the newest. */
+function pickLogWeek(weeks, key, countKey) {
+  return weeks.find((w) => w.key === key) || weeks.find((w) => w.counts && w.counts[countKey]) || weeks[0] || null;
 }
 
 /* Pill text: weeks stay as named, preseason and playoff names are shortened to fit a
@@ -2425,8 +2420,8 @@ function selectedUpdateWeek(weeks) {
    (this offseason's Stage 6 and last season's, both on the list) get their first-sync
    date; any still alike after that (same day) are numbered in the order they happened,
    oldest = 1, so the numbers don't shift as newer weeks arrive (2026-10-16). */
-function updatePillLabel(w) {
-  const label = String(updateWeekName(w));
+function logPillLabel(w) {
+  const label = String(logWeekName(w));
   const pre = label.match(/^Preseason Week (\d+)$/);
   if (pre) return "Pre " + pre[1];
   if (label === "Conference Championship") return "Conference";
@@ -2436,9 +2431,9 @@ function shortDate(iso) {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
-function updatePillLabels(weeks) {
+function logPillLabels(weeks) {
   const count = (list) => list.reduce((m, l) => m.set(l, (m.get(l) || 0) + 1), new Map());
-  const base = weeks.map(updatePillLabel);
+  const base = weeks.map(logPillLabel);
   const baseCount = count(base);
   const dated = base.map((label, i) => {
     if (baseCount.get(label) === 1) return label;
@@ -2456,29 +2451,25 @@ function updatePillLabels(weeks) {
   });
 }
 /** A pill's tooltip: the week's full name and when it was first synced, to the minute. */
-function updatePillTitle(w) {
+function logPillTitle(w) {
   const d = new Date(w.recordedAt);
-  return isNaN(d.getTime()) ? String(updateWeekName(w)) : `${updateWeekName(w)} · first synced ${d.toLocaleString()}`;
-}
-
-function updateWeekUrl(key) {
-  return "updates/" + encodeURIComponent(key) + ".json";
+  return isNaN(d.getTime()) ? String(logWeekName(w)) : `${logWeekName(w)} · first synced ${d.toLocaleString()}`;
 }
 
 /**
- * The week's player file, fetched once per (key, updatedAt): a later sync that touched
- * the week bumps updatedAt in site.json, which fetches it fresh. A file that isn't the
- * week asked for (wrong key, or the service worker's offline index.html) is an error,
+ * A week's file, fetched once per (key, updatedAt): a later sync that touched the week
+ * bumps updatedAt in site.json, which fetches it fresh. A file that isn't the week asked
+ * for (wrong key, no rows list, or the service worker's offline index.html) is an error,
  * never shown as that week.
  */
-function loadUpdateWeek(week) {
-  const hit = updateWeekCache.get(week.key);
+function loadLogWeek(cache, url, week, hasRows) {
+  const hit = cache.get(week.key);
   if (hit && hit.updatedAt === week.updatedAt) return hit;
   const entry = { updatedAt: week.updatedAt, status: "loading", data: null, stale: false, promise: null };
-  entry.promise = fetch(updateWeekUrl(week.key), { cache: "no-cache" })
+  entry.promise = fetch(url, { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
-      if (!d || d.key !== week.key || !Array.isArray(d.players)) throw new Error("not this week's file");
+      if (!d || d.key !== week.key || !hasRows(d)) throw new Error("not this week's file");
       entry.status = "ok";
       entry.data = d;
       // The right week, but maybe not the same sync as site.json: GitHub Pages' edge
@@ -2493,8 +2484,182 @@ function loadUpdateWeek(week) {
       entry.status = "error";
       return entry;
     });
-  updateWeekCache.set(week.key, entry);
+  cache.set(week.key, entry);
   return entry;
+}
+
+/* A row (or a traded player) that opens a player's card. A div, so it's given what a
+   button has: a tab stop, a button role, and Enter / Space (review, 2026-10-16). The
+   click doesn't bubble: a traded player sits inside its trade card. */
+function logTappable(node, open) {
+  node.classList.add("row-tappable");
+  node.setAttribute("tabindex", "0");
+  node.setAttribute("role", "button");
+  node.addEventListener("click", (ev) => {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    open();
+  });
+  node.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    if (ev.preventDefault) ev.preventDefault();
+    if (ev.stopPropagation) ev.stopPropagation();
+    open();
+  });
+}
+
+/* Week pills, newest first. One scrolling row on phones (a season is 20-odd weeks), the
+   open week's pill marked (aria-pressed too) and centred in the row. `tab` names the
+   tab's own hook classes (upd-weeks, tx-weeks). */
+function appendLogWeekPills(view, weeks, week, tab, onPick) {
+  const labels = logPillLabels(weeks);
+  const pills = el("div", `week-pills log-weeks ${tab}-weeks`);
+  let activePill = null;
+  weeks.forEach((w, i) => {
+    const on = w.key === week.key;
+    const pill = el("button", "week-pill" + (on ? " active" : ""), labels[i]);
+    pill.type = "button";
+    pill.title = logPillTitle(w);
+    pill.setAttribute("aria-pressed", String(on));
+    pill.addEventListener("click", () => {
+      if (!on) onPick(w.key);
+    });
+    if (on) activePill = pill;
+    pills.appendChild(pill);
+  });
+  view.appendChild(pills);
+  if (activePill) pills.scrollLeft = Math.max(0, activePill.offsetLeft - pills.clientWidth / 2 + activePill.offsetWidth / 2);
+  return pills;
+}
+
+function logWeekMeta(week, tab) {
+  const first = shortDate(week.recordedAt);
+  const last = isNaN(new Date(week.updatedAt).getTime()) ? "" : timeAgo(week.updatedAt);
+  return el("div", `log-meta ${tab}-meta`, [logWeekName(week), first && `first synced ${first}`, last && `last updated ${last} ago`].filter(Boolean).join(" · "));
+}
+
+/** The whole-week totals row, from site.json's counts: there before the week's file arrives. */
+function logSummary(tab) {
+  const sum = el("div", `team-chips log-summary ${tab}-summary`);
+  const chip = (label, value, cls, title) => {
+    const d = el("div", "team-chip" + (cls ? " " + cls : ""));
+    d.appendChild(el("div", "team-chip-val", String(value ?? 0)));
+    d.appendChild(el("div", "team-chip-label", label));
+    if (title) d.title = title;
+    sum.appendChild(d);
+    return d;
+  };
+  return { sum, chip };
+}
+
+function logTeamSelect(value, withFreeAgents, onChange) {
+  const sel = el("select", "team-select");
+  sel.setAttribute("aria-label", "Team");
+  sel.appendChild(new Option("All teams", ""));
+  for (const t of [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick))) sel.appendChild(new Option(`${t.city} ${t.nick}`, String(t.teamId)));
+  if (withFreeAgents) sel.appendChild(new Option("Free agents", "fa"));
+  sel.value = value;
+  sel.addEventListener("change", () => onChange(sel.value));
+  return sel;
+}
+
+/** The type filter: one pill per kind, the picked one marked (aria-pressed too). */
+function logTypePills(types, current, onPick) {
+  const row = el("div", "week-pills log-types");
+  for (const [key, label] of types) {
+    const on = current === key;
+    const pill = el("button", "week-pill" + (on ? " active" : ""), label);
+    pill.type = "button";
+    pill.setAttribute("aria-pressed", String(on));
+    pill.addEventListener("click", () => {
+      for (const b of row.children) {
+        b.classList.toggle("active", b === pill);
+        b.setAttribute("aria-pressed", String(b === pill));
+      }
+      onPick(key);
+    });
+    row.appendChild(pill);
+  }
+  return row;
+}
+
+/**
+ * The week's list while its file is loading or after it failed. Returns true when it
+ * drew one of those (the caller draws the rows otherwise). `again` redraws the list:
+ * once the file lands (only if that list is still on the page), and from the retry
+ * button, which drops the failed fetch first.
+ */
+function logWeekPending(wrap, entry, week, { tab, noun, cache }, again) {
+  const name = logWeekName(week);
+  if (entry.status === "loading") {
+    wrap.appendChild(el("div", "card")).appendChild(el("div", "empty", `Loading ${name}…`));
+    entry.promise.then(() => { if (wrap.isConnected) again(); });
+    return true;
+  }
+  if (entry.status === "error") {
+    const card = el("div", "card");
+    card.appendChild(el("div", "empty", `Couldn't load ${name}'s ${noun}.`));
+    const retry = el("button", `trade-cta trade-cta-secondary log-retry ${tab}-retry`, "Try again");
+    retry.type = "button";
+    retry.addEventListener("click", () => { cache.delete(week.key); again(); });
+    card.appendChild(retry);
+    wrap.appendChild(card);
+    return true;
+  }
+  return false;
+}
+
+/** Said, not hidden: the week's file may be a sync behind or ahead of the totals above. */
+function logStaleNote(wrap, entry, tab) {
+  if (entry.stale) wrap.appendChild(el("div", `log-meta log-stale ${tab}-stale`, "This list is from a different sync than the totals above. Refresh in a few minutes for the latest."));
+}
+
+/** A long week (an offseason's draft is 200-odd picks) shows its first rows and a button for the rest. */
+const LOG_CHUNK = 120;
+function logShowAll(wrap, total, noun, tab, onClick) {
+  const more = el("button", `trade-cta fa-more log-more ${tab}-more`, `Show all ${total} ${noun}`);
+  more.type = "button";
+  more.addEventListener("click", onClick);
+  wrap.appendChild(more);
+}
+
+/* ---------- Player updates ----------
+   The weekly player-updates report on the website (commissioner's request, 2026-10-16).
+   The league runs website-only, so the Discord "player updates" post that listed each
+   sync's rating, dev trait, height/weight and position changes reached nobody. The bot
+   now records them per week: site.json carries the week list (playerUpdates.weeks, with
+   counts) and each week's players live in updates/<key>.json. */
+
+const UPDATE_WEEKS_MAX = 30; // the contract's cap; a bigger list is cut, not trusted
+const updatesView = { week: null, team: "", group: "", type: "", showAll: false }; // week = key; null = newest
+const updateWeekCache = new Map(); // key -> { updatedAt, status: "loading" | "ok" | "error", data, stale, promise }
+
+/* Change-type filters. "Ratings" is any rating move, the overall included, so a player
+   whose overall moved is a ratings change even when no single rating is listed. */
+const UPDATE_TYPES = [
+  ["", "All changes"],
+  ["ratings", "Ratings"],
+  ["dev", "Dev trait"],
+  ["physical", "Height & weight"],
+  ["position", "Position"],
+];
+
+// Shown wherever a height/weight change is (tag tooltips, the summary chip, the legend).
+// It says only what the Discord report said (offseasonPlayerReport.ts, weeklyReports.ts).
+// The first draft went on to say what the change must mean; on a public page that
+// points at a team owner, and the site can't know who or why (review, 2026-10-16).
+const PHYSICAL_NOTE = "Height and weight never change through normal play: EA's progression only moves ratings and dev traits.";
+
+function updateWeekList() {
+  return logWeekList(DATA && DATA.playerUpdates, UPDATE_WEEKS_MAX);
+}
+function selectedUpdateWeek(weeks) {
+  return pickLogWeek(weeks, updatesView.week, "players");
+}
+function updateWeekUrl(key) {
+  return "updates/" + encodeURIComponent(key) + ".json";
+}
+function loadUpdateWeek(week) {
+  return loadLogWeek(updateWeekCache, updateWeekUrl(week.key), week, (d) => Array.isArray(d.players));
 }
 
 function updateMatchesType(p, type) {
@@ -2552,8 +2717,8 @@ function updateRow(p) {
   const physical = p.physical || [];
   const known = playerById(p.id);
   // A player since released and gone from every list has no card to open.
-  const r = el("div", "upd-row" + (physical.length ? " upd-flag" : "") + (known ? " row-tappable" : ""));
-  if (known) r.addEventListener("click", () => openPlayerCard(p.id));
+  const r = el("div", "upd-row" + (physical.length ? " upd-flag" : ""));
+  if (known) logTappable(r, () => openPlayerCard(p.id));
 
   const t = p.teamId != null ? team(p.teamId) : null;
   r.appendChild(t ? logoImg(t.abbr, "upd-logo") : el("span", "upd-fa", "FA"));
@@ -2627,40 +2792,15 @@ function renderUpdates(view) {
     return;
   }
 
-  // Week pills, newest first. One scrolling row on phones (a season is 20-odd weeks).
-  const labels = updatePillLabels(weeks);
-  const pills = el("div", "week-pills upd-weeks");
-  let activePill = null;
-  weeks.forEach((w, i) => {
-    const pill = el("button", "week-pill" + (w.key === week.key ? " active" : ""), labels[i]);
-    pill.type = "button";
-    pill.title = updatePillTitle(w);
-    pill.addEventListener("click", () => {
-      if (w.key === week.key) return;
-      updatesView.week = w.key;
-      updatesView.showAll = false;
-      render();
-    });
-    if (w.key === week.key) activePill = pill;
-    pills.appendChild(pill);
+  appendLogWeekPills(view, weeks, week, "upd", (key) => {
+    updatesView.week = key;
+    updatesView.showAll = false;
+    render();
   });
-  view.appendChild(pills);
-  if (activePill) pills.scrollLeft = Math.max(0, activePill.offsetLeft - pills.clientWidth / 2 + activePill.offsetWidth / 2);
+  view.appendChild(logWeekMeta(week, "upd"));
 
-  const first = shortDate(week.recordedAt);
-  const last = isNaN(new Date(week.updatedAt).getTime()) ? "" : timeAgo(week.updatedAt);
-  view.appendChild(el("div", "upd-meta", [updateWeekName(week), first && `first synced ${first}`, last && `last updated ${last} ago`].filter(Boolean).join(" · ")));
-
-  // Whole-week totals from site.json, there before the week's file arrives.
   const c = week.counts || {};
-  const sum = el("div", "team-chips upd-summary");
-  const chip = (label, value, cls, title) => {
-    const d = el("div", "team-chip" + (cls ? " " + cls : ""));
-    d.appendChild(el("div", "team-chip-val", String(value ?? 0)));
-    d.appendChild(el("div", "team-chip-label", label));
-    if (title) d.title = title;
-    sum.appendChild(d);
-  };
+  const { sum, chip } = logSummary("upd");
   chip("Players", c.players);
   chip("OVR up", c.ovrUp, c.ovrUp ? "upd-up" : "");
   chip("OVR down", c.ovrDown, c.ovrDown ? "upd-down" : "");
@@ -2669,15 +2809,8 @@ function renderUpdates(view) {
   chip("Position", c.position);
   view.appendChild(sum);
 
-  const controls = el("div", "fa-controls upd-controls");
-  const teamSel = el("select", "team-select");
-  teamSel.setAttribute("aria-label", "Team");
-  teamSel.appendChild(new Option("All teams", ""));
-  for (const t of [...(DATA.teams || [])].sort((a, b) => a.nick.localeCompare(b.nick))) teamSel.appendChild(new Option(`${t.city} ${t.nick}`, String(t.teamId)));
-  teamSel.appendChild(new Option("Free agents", "fa"));
-  teamSel.value = updatesView.team;
-  teamSel.addEventListener("change", () => { updatesView.team = teamSel.value; updatesView.showAll = false; renderList(); });
-  controls.appendChild(teamSel);
+  const controls = el("div", "fa-controls log-controls upd-controls");
+  controls.appendChild(logTeamSelect(updatesView.team, true, (v) => { updatesView.team = v; updatesView.showAll = false; renderList(); }));
   const groupSel = el("select", "team-select");
   groupSel.setAttribute("aria-label", "Position group");
   groupSel.appendChild(new Option("All positions", ""));
@@ -2687,19 +2820,7 @@ function renderUpdates(view) {
   controls.appendChild(groupSel);
   view.appendChild(controls);
 
-  const typePills = el("div", "week-pills");
-  for (const [key, label] of UPDATE_TYPES) {
-    const pill = el("button", "week-pill" + (updatesView.type === key ? " active" : ""), label);
-    pill.type = "button";
-    pill.addEventListener("click", () => {
-      updatesView.type = key;
-      updatesView.showAll = false;
-      for (const b of typePills.children) b.classList.toggle("active", b === pill);
-      renderList();
-    });
-    typePills.appendChild(pill);
-  }
-  view.appendChild(typePills);
+  view.appendChild(logTypePills(UPDATE_TYPES, updatesView.type, (key) => { updatesView.type = key; updatesView.showAll = false; renderList(); }));
 
   const listWrap = el("div");
   view.appendChild(listWrap);
@@ -2709,38 +2830,16 @@ function renderUpdates(view) {
     const y = window.scrollY;
     listWrap.replaceChildren();
     const entry = loadUpdateWeek(week);
-    const name = updateWeekName(week);
-    if (entry.status === "loading") {
-      listWrap.appendChild(el("div", "card")).appendChild(el("div", "empty", `Loading ${name}…`));
-      entry.promise.then(() => { if (listWrap.isConnected) renderList(); });
-      return;
-    }
-    if (entry.status === "error") {
-      const card = el("div", "card");
-      card.appendChild(el("div", "empty", `Couldn't load ${name}'s updates.`));
-      const retry = el("button", "trade-cta trade-cta-secondary upd-retry", "Try again");
-      retry.type = "button";
-      retry.addEventListener("click", () => { updateWeekCache.delete(week.key); renderList(); });
-      card.appendChild(retry);
-      listWrap.appendChild(card);
-      return;
-    }
+    if (logWeekPending(listWrap, entry, week, { tab: "upd", noun: "updates", cache: updateWeekCache }, renderList)) return;
 
     const all = entry.data.players;
     const rows = sortUpdatePlayers(filterUpdatePlayers(all, updatesView));
-    // Said, not hidden: the copy may be a sync behind or ahead of the totals above.
-    if (entry.stale) listWrap.appendChild(el("div", "upd-meta upd-stale", "This list is from a different sync than the totals above. Refresh in a few minutes for the latest."));
+    logStaleNote(listWrap, entry, "upd");
     const card = el("div", "card upd-list");
-    const CHUNK = 120;
-    for (const p of updatesView.showAll ? rows : rows.slice(0, CHUNK)) card.appendChild(updateRow(p));
-    if (!rows.length) card.appendChild(el("div", "empty", all.length ? "No players match these filters." : `Nothing changed for any player in ${name}.`));
+    for (const p of updatesView.showAll ? rows : rows.slice(0, LOG_CHUNK)) card.appendChild(updateRow(p));
+    if (!rows.length) card.appendChild(el("div", "empty", all.length ? "No players match these filters." : `Nothing changed for any player in ${logWeekName(week)}.`));
     listWrap.appendChild(card);
-    if (!updatesView.showAll && rows.length > CHUNK) {
-      const more = el("button", "trade-cta fa-more upd-more", `Show all ${rows.length} players`);
-      more.type = "button";
-      more.addEventListener("click", () => { updatesView.showAll = true; renderList(); });
-      listWrap.appendChild(more);
-    }
+    if (!updatesView.showAll && rows.length > LOG_CHUNK) logShowAll(listWrap, rows.length, "players", "upd", () => { updatesView.showAll = true; renderList(); });
     window.scrollTo(0, y);
   }
   renderList();
@@ -2748,9 +2847,261 @@ function renderUpdates(view) {
   view.appendChild(el("div", "news-disclaimer", "🚨 " + PHYSICAL_NOTE + " Dev traits move only at the game's own milestones. A change that went back within the week drops out; tap a player for his full card."));
 }
 
+/* ---------- Transactions ----------
+   Every roster move, week by week (commissioner's request, 2026-10-16). The home page's
+   wire keeps only the last 30 moves with no season or week, so a trade from a month ago
+   was simply gone, and the Discord roster reports that listed a week's moves reach
+   nobody in a website-only league. The bot now logs every move per week: site.json
+   lists the weeks (transactionsLog.weeks, with counts) and each week's moves live in
+   transactions/<key>.json, newest first. The bot's log is already idempotent (a move a
+   later sync reports again is never added twice), so the tab draws each file as it is
+   and counts nothing of its own. Its weeks are keyed and named by the same functions as
+   the Updates log's, so the two tabs' pills for a week read the same. Weeks go by key,
+   never label (see Weekly logs above). */
+
+const TX_WEEKS_MAX = 40; // the contract's cap: this season plus last season's offseason
+const txView = { week: null, team: "", type: "", showAll: false }; // week = key; null = newest with moves
+const txWeekCache = new Map(); // key -> { updatedAt, status: "loading" | "ok" | "error", data, stale, promise }
+
+// Type filters, the deals first. Each is one entry kind in the week's file.
+const TX_TYPES = [
+  ["", "All moves"],
+  ["trade", "Trades"],
+  ["signed", "Signings"],
+  ["released", "Releases"],
+  ["resigned", "Re-signings"],
+  ["drafted", "Draft"],
+  ["left", "Departures"],
+];
+const TX_PLAYER_KINDS = ["signed", "released", "resigned", "drafted", "left"];
+
+function txWeekList() {
+  return logWeekList(DATA && DATA.transactionsLog, TX_WEEKS_MAX);
+}
+function selectedTxWeek(weeks) {
+  return pickLogWeek(weeks, txView.week, "total");
+}
+function txWeekUrl(key) {
+  return "transactions/" + encodeURIComponent(key) + ".json";
+}
+function loadTxWeek(week) {
+  return loadLogWeek(txWeekCache, txWeekUrl(week.key), week, (d) => Array.isArray(d.entries));
+}
+
+function isTxPlayer(p) {
+  return !!p && typeof p === "object" && typeof p.id === "number";
+}
+
+/* The entries this shell can draw. A kind it doesn't know (a newer bot's) or an entry
+   with no player, or a trade with no sides, is left out rather than drawn as a blank
+   row. A side with no "gets" got no players: still a side of the deal, so it stays. */
+function txEntries(data) {
+  const out = [];
+  for (const e of (data && data.entries) || []) {
+    if (!e || typeof e !== "object") continue;
+    if (e.kind === "trade") {
+      const sides = (Array.isArray(e.sides) ? e.sides : [])
+        .filter((s) => s && typeof s === "object")
+        .map((s) => ({ ...s, gets: (Array.isArray(s.gets) ? s.gets : []).filter(isTxPlayer) }));
+      if (sides.length) out.push({ ...e, sides });
+    } else if (TX_PLAYER_KINDS.includes(e.kind) && isTxPlayer(e.player)) {
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+/** Every team an entry involves: each side of a trade, else the one team (none for a free agent who left). */
+function txTeamIds(e) {
+  return e.kind === "trade" ? e.sides.map((s) => s.teamId) : [e.teamId];
+}
+
+/* Team: "" = all, else a teamId; a trade belongs to every team in it, so a team's
+   filter shows the deals it was part of from either end. Type: "" = all, else a kind. */
+function filterTxEntries(entries, f) {
+  return entries.filter((e) => {
+    if (f.type && e.kind !== f.type) return false;
+    if (f.team && !txTeamIds(e).some((id) => id != null && String(id) === f.team)) return false;
+    return true;
+  });
+}
+
+/** Newest first, the contract's order kept here too; moves at the same moment (or with no readable time) keep the file's order. */
+function sortTxEntries(entries) {
+  const t = (e) => {
+    const n = Date.parse(e.at);
+    return isNaN(n) ? -Infinity : n;
+  };
+  return entries
+    .map((e, i) => ({ e, i, t: t(e) }))
+    .sort((a, b) => (b.t === a.t ? a.i - b.i : b.t - a.t))
+    .map((x) => x.e);
+}
+
+function txDevBadge(dev) {
+  // Normal is most of the league; only a trait worth noticing gets a badge.
+  if (!dev || dev === "Normal") return null;
+  return el("span", "dev-badge dev-" + String(dev).toLowerCase().replace(/[^a-z]/g, ""), dev);
+}
+
+/** A player still in the league opens his card; one who has left every list has none to open. */
+function txTappable(node, p) {
+  if (playerById(p.id)) logTappable(node, () => openPlayerCard(p.id));
+}
+
+function txAge(p) {
+  return p.age != null ? `${p.age} yrs` : null;
+}
+
+/* The bot files an undrafted rookie's signing as a draft entry whose detail is
+   "Undrafted" (offseasonRosterReport's draft text). Drawn as a "Drafted" badge beside
+   "Undrafted" it contradicted itself (36 rows in one rookie week, review 2026-10-16), so
+   it reads as what it was. It stays a draft entry for the Draft filter and the Drafted
+   count, both of which come from the bot. */
+function txIsUndrafted(e) {
+  return e.kind === "drafted" && /^undrafted$/i.test(String(e.detail || "").trim());
+}
+
+/** One player a side of a trade received. */
+function txTradePlayer(p, teamId) {
+  const line = el("div", "tx-player");
+  txTappable(line, p);
+  line.appendChild(avatar({ name: p.name || "?", teamId: teamId ?? -1, portraitId: p.portraitId }, "tx-av"));
+  const who = el("div", "tx-player-who");
+  who.appendChild(el("div", "tx-player-name", p.name || "Unknown"));
+  const sub = el("div", "tx-player-sub");
+  sub.appendChild(el("span", null, [p.pos || "—", txAge(p)].filter(Boolean).join(" · ")));
+  const dev = txDevBadge(p.dev);
+  if (dev) sub.appendChild(dev);
+  who.appendChild(sub);
+  line.appendChild(who);
+  const ovr = el("div", "tx-ovr");
+  ovr.appendChild(el("div", "tx-ovr-val", p.ovr != null ? String(p.ovr) : "—"));
+  ovr.appendChild(el("div", "tx-ovr-label", "OVR"));
+  line.appendChild(ovr);
+  return line;
+}
+
+/* A trade: every team in it and what each received. Roster data carries players only,
+   so a side that got none got picks or nothing, and says so rather than looking empty. */
+function txTradeCard(e, focusTeam) {
+  const card = el("div", "tx-trade");
+  const head = el("div", "tx-trade-head");
+  head.appendChild(el("span", "tx-badge tx-badge-trade", e.sides.length > 2 ? `${e.sides.length}-team trade` : TX_BADGE.trade));
+  head.appendChild(el("span", "tx-trade-teams", e.sides.map((s) => (s.teamId != null ? team(s.teamId).abbr : "?")).join(" · ")));
+  const when = shortDate(e.at);
+  if (when) head.appendChild(el("span", "tx-when", when));
+  card.appendChild(head);
+
+  const sides = el("div", "tx-sides");
+  for (const s of e.sides) {
+    const t = s.teamId != null ? team(s.teamId) : null;
+    const side = el("div", "tx-side" + (focusTeam && String(s.teamId) === focusTeam ? " tx-focus" : ""));
+    side.style.setProperty("--rail", t ? railColor(t.abbr) : "#5c6b7d");
+    const sh = el("div", "tx-side-head");
+    if (t) sh.appendChild(logoImg(t.abbr, "tx-side-logo"));
+    sh.appendChild(el("span", "tx-side-team", t ? `${t.nick} receive` : "Receive"));
+    side.appendChild(sh);
+    for (const p of s.gets) side.appendChild(txTradePlayer(p, s.teamId));
+    if (!s.gets.length) side.appendChild(el("div", "tx-none", "No players · picks or nothing"));
+    sides.appendChild(side);
+  }
+  card.appendChild(sides);
+  return card;
+}
+
+/** A signing, release, re-signing, draft pick or departure: one player, one team (none for a free agent who left). */
+function txPlayerRow(e) {
+  const p = e.player;
+  const r = el("div", "tx-row tx-k-" + e.kind);
+  txTappable(r, p);
+  const t = e.teamId != null ? team(e.teamId) : null;
+  r.appendChild(t ? logoImg(t.abbr, "tx-logo") : el("span", "tx-fa", "FA"));
+
+  const main = el("div", "tx-main");
+  const top = el("div", "tx-top");
+  top.appendChild(el("span", "tx-name", p.name || "Unknown"));
+  top.appendChild(el("span", "tx-pos", [p.pos || "—", txAge(p), t ? t.abbr : "Free agent"].filter(Boolean).join(" · ")));
+  main.appendChild(top);
+  const tags = el("div", "tx-tags");
+  const udfa = txIsUndrafted(e);
+  tags.appendChild(el("span", "tx-badge tx-badge-" + e.kind + (udfa ? " tx-badge-udfa" : ""), udfa ? "Undrafted rookie" : TX_BADGE[e.kind]));
+  const dev = txDevBadge(p.dev);
+  if (dev) tags.appendChild(dev);
+  if (e.detail && !udfa) tags.appendChild(el("span", "tx-detail", String(e.detail)));
+  main.appendChild(tags);
+  r.appendChild(main);
+
+  const ovr = el("div", "tx-ovr");
+  ovr.appendChild(el("div", "tx-ovr-val", p.ovr != null ? String(p.ovr) : "—"));
+  ovr.appendChild(el("div", "tx-ovr-label", "OVR"));
+  r.appendChild(ovr);
+  return r;
+}
+
+function txEntryNode(e, focusTeam) {
+  return e.kind === "trade" ? txTradeCard(e, focusTeam) : txPlayerRow(e);
+}
+
+function renderTransactions(view) {
+  const weeks = txWeekList();
+  const week = selectedTxWeek(weeks);
+  const c = (week && week.counts) || {};
+  const total = c.total || 0;
+  view.appendChild(sectionHead("Transactions", week ? `${total} move${total === 1 ? "" : "s"}` : ""));
+  if (!week) {
+    const card = el("div", "card");
+    card.appendChild(el("div", "empty", "No transactions recorded yet. Each sync compares every roster with the one before, and the week's trades, signings, releases, re-signings, draft picks and departures land here. Until then the home page's wire has the latest moves."));
+    view.appendChild(card);
+    return;
+  }
+
+  appendLogWeekPills(view, weeks, week, "tx", (key) => {
+    txView.week = key;
+    txView.showAll = false;
+    render();
+  });
+  view.appendChild(logWeekMeta(week, "tx"));
+
+  const { sum, chip } = logSummary("tx");
+  for (const [label, value] of [["Moves", c.total], ["Trades", c.trades], ["Signed", c.signed], ["Released", c.released], ["Re-signed", c.resigned], ["Drafted", c.drafted], ["Departed", c.left]]) {
+    chip(label, value, value ? "" : "tx-zero");
+  }
+  view.appendChild(sum);
+
+  const controls = el("div", "fa-controls log-controls tx-controls");
+  controls.appendChild(logTeamSelect(txView.team, false, (v) => { txView.team = v; txView.showAll = false; renderList(); }));
+  view.appendChild(controls);
+  view.appendChild(logTypePills(TX_TYPES, txView.type, (key) => { txView.type = key; txView.showAll = false; renderList(); }));
+
+  const listWrap = el("div");
+  view.appendChild(listWrap);
+
+  function renderList() {
+    // Same scroll guard as the Players/FA grids: a filter tap never jumps the page.
+    const y = window.scrollY;
+    listWrap.replaceChildren();
+    const entry = loadTxWeek(week);
+    if (logWeekPending(listWrap, entry, week, { tab: "tx", noun: "transactions", cache: txWeekCache }, renderList)) return;
+
+    const all = txEntries(entry.data);
+    const rows = sortTxEntries(filterTxEntries(all, txView));
+    logStaleNote(listWrap, entry, "tx");
+    const card = el("div", "card tx-list");
+    for (const e of txView.showAll ? rows : rows.slice(0, LOG_CHUNK)) card.appendChild(txEntryNode(e, txView.team));
+    if (!rows.length) card.appendChild(el("div", "empty", all.length ? "No moves match these filters." : `No transactions in ${logWeekName(week)}.`));
+    listWrap.appendChild(card);
+    if (!txView.showAll && rows.length > LOG_CHUNK) logShowAll(listWrap, rows.length, "moves", "tx", () => { txView.showAll = true; renderList(); });
+    window.scrollTo(0, y);
+  }
+  renderList();
+
+  view.appendChild(el("div", "news-disclaimer", "Every roster move the bot saw between syncs, newest first. Trades list the players each team received; draft picks don't appear in roster data, so a side that got no players got picks or nothing. Moves between teams in one sync are grouped as one deal. Tap a player still in the league for his full card."));
+}
+
 /* ---------- App shell ---------- */
 
-const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, freeagents: renderFreeAgents, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, updates: renderUpdates, news: renderNews, trade: renderTrade };
+const RENDERERS = { home: renderHome, teams: renderTeams, players: renderPlayers, freeagents: renderFreeAgents, standings: renderStandings, rankings: renderRankings, leaders: renderLeaders, updates: renderUpdates, transactions: renderTransactions, news: renderNews, trade: renderTrade };
 let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
@@ -2804,18 +3155,33 @@ function render() {
   window.scrollTo(0, keepScroll ? y : 0);
 }
 
+/* Switching tabs, from the tab bar or from a link inside a page (the home wire's "All
+   transactions →"). Either way an open team page or Draft HQ closes, the way the bar
+   always did. On the narrowest phones the bar scrolls sideways (eleven tabs), so the
+   tab switched to is scrolled into view: a link must never land on a tab the bar hides. */
+function showTab(name) {
+  viewTeamId = null;
+  viewDraftHq = false;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  activeTab = name;
+  for (const b of document.querySelectorAll(".tab")) {
+    const on = b.dataset.tab === name;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+    if (on) revealTab(b);
+  }
+  render();
+}
+function revealTab(btn) {
+  const bar = btn.parentNode;
+  if (!bar || !(bar.scrollWidth > bar.clientWidth)) return;
+  const left = btn.offsetLeft, right = left + btn.offsetWidth;
+  if (left < bar.scrollLeft) bar.scrollLeft = left;
+  else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth;
+}
+
 for (const btn of document.querySelectorAll(".tab")) {
-  btn.addEventListener("click", () => {
-    viewTeamId = null;
-    viewDraftHq = false;
-    try { history.replaceState(null, "", location.pathname + location.search); } catch {}
-    activeTab = btn.dataset.tab;
-    for (const b of document.querySelectorAll(".tab")) {
-      b.classList.toggle("active", b === btn);
-      b.setAttribute("aria-selected", String(b === btn));
-    }
-    render();
-  });
+  btn.addEventListener("click", () => showTab(btn.dataset.tab));
 }
 
 /* This shell is shared source — the bot copies site/ into EVERY league's repo — so
