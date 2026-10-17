@@ -849,10 +849,13 @@ function renderGame(view, scheduleId) {
     head.appendChild(logoImg(t.abbr, "hist-logo"));
     head.appendChild(el("span", null, t.nick));
     card.appendChild(head);
+    // Mixed signals (ratings one way, this season's results the other) only when there are any.
     for (const [label, notes, none] of [
       [`How the ${t.nick} attack`, S.attack, "No rule fired: nothing in the numbers stands out in their favour."],
       [`What hurts the ${t.nick}`, S.avoid, "No rule fired: nothing in the numbers stands out against them."],
+      ["Mixed signals", S.mixed || [], null],
     ]) {
+      if (!notes.length && none === null) continue;
       card.appendChild(el("div", "need-depth-label", label));
       if (!notes.length) card.appendChild(el("div", "gs-none", none));
       for (const n of notes) {
