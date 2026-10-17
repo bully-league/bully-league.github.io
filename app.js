@@ -540,6 +540,8 @@ function matchupPanel(g, away, home) {
     panel.appendChild(boxScorePanel(g.scheduleId, DATA.week?.stage ?? null, DATA.week?.week ?? null));
   }
 
+  panel.appendChild(gameLink(g.scheduleId, "matchup-cta secondary", "Full game page: tendencies, edges, game plan →"));
+
   if (g.channelUrl && !g.played) {
     const cta = el("a", "matchup-cta", "Open game channel →");
     cta.href = g.channelUrl;
@@ -602,10 +604,276 @@ function gameCard(g) {
   else if (g.played) meta.appendChild(el("span", "chip final", "Final"));
   else meta.appendChild(el("span", "chip live", "Scheduled"));
   meta.appendChild(el("span", "expand-hint", expandedGame === g.scheduleId ? "Hide matchup ▴" : "Matchup ▾"));
+  meta.appendChild(gameLink(g.scheduleId, "game-link", "Game page →"));
   body.appendChild(meta);
   card.appendChild(body);
   if (expandedGame === g.scheduleId) card.appendChild(matchupPanel(g, away, home));
   return card;
+}
+
+/* ---------- Game page (#game-<scheduleId>) ----------
+   One page per game on this week's slate: both sides' season tendencies, where each
+   ranks in the top or bottom quarter of the league, roster-rating unit edges, and the
+   rule-based game plan for each side (site.json's matchups, built by
+   matchupAnalysis.ts). The Discord matchup breakdown links here. site.json only ever
+   holds the current week, so a link from an earlier week gets a plain "not on this
+   week's slate" page instead of somebody else's game. */
+
+/* A link to a game's page: a real href (copyable, opens in a new tab) that opens the
+   page in place on a plain tap. Never lets the tap reach a card underneath. */
+function gameLink(scheduleId, cls, text) {
+  const a = el("a", cls, text);
+  a.href = "#game-" + scheduleId;
+  a.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.preventDefault) e.preventDefault();
+    openGame(scheduleId);
+  });
+  return a;
+}
+
+function matchupMetric(key) {
+  return ((DATA.matchups && DATA.matchups.metrics) || []).find((m) => m.key === key) || null;
+}
+function fmtMatchupValue(def, v) {
+  return v.toFixed(def.decimals) + def.unit;
+}
+/* "6th" / "T-6th"; empty for a style number (run rate) that has no rank. */
+function matchupRank(s) {
+  if (!s || s.r == null) return "";
+  const n = s.r, mod = n % 100;
+  const suffix = mod >= 11 && mod <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" })[n % 10] || "th";
+  return (s.t ? "T-" : "") + n + suffix;
+}
+function matchupOf(s) {
+  return s.n != null ? s.n : DATA.matchups.teamCount;
+}
+
+function renderGame(view, scheduleId) {
+  const back = el("button", "team-back", "← Back");
+  back.type = "button";
+  back.addEventListener("click", () => closeGame(false));
+  view.appendChild(back);
+
+  const g = ((DATA.week && DATA.week.games) || []).find((x) => x.scheduleId === scheduleId);
+  if (!g) {
+    const missing = el("div", "card game-missing");
+    missing.appendChild(el("div", "game-missing-title", "Not on this week's slate"));
+    missing.appendChild(el("div", "game-missing-text", `The site only carries the current week${DATA.week && DATA.week.label ? ` (${DATA.week.label})` : ""}, and this game isn't on it. A game page link stops working once its week has moved on.`));
+    const home = el("button", "rail-more", "This week's games →");
+    home.type = "button";
+    home.addEventListener("click", () => showTab("home"));
+    missing.appendChild(home);
+    view.appendChild(missing);
+    return;
+  }
+
+  const away = team(g.awayTeamId), home = team(g.homeTeamId);
+  const sides = [[away, "away"], [home, "home"]];
+
+  // Header: the front page's billboard, both teams' colors meeting at the seam.
+  const hero = el("div", "hero game-hero" + (g.isGotw ? "" : " plain"));
+  hero.style.setProperty("--bb-away", railColor(away.abbr));
+  hero.style.setProperty("--bb-home", railColor(home.abbr));
+  hero.appendChild(logoImg(away.abbr, "wm wm-away"));
+  hero.appendChild(logoImg(home.abbr, "wm wm-home"));
+  const eyebrow = el("div", "hero-eyebrow");
+  if (g.isGotw) eyebrow.appendChild(svgIcon("M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3 7.2 16.9l.9-5.4L4.2 7.7l5.4-.8z"));
+  eyebrow.appendChild(document.createTextNode(`${g.isGotw ? "Game of the Week · " : ""}${DATA.week.label}`));
+  hero.appendChild(eyebrow);
+  const face = el("div", "hero-face");
+  for (const [t, side] of sides) {
+    const block = el("div", "hero-team row-tappable " + side);
+    block.addEventListener("click", () => openTeam(t.teamId));
+    block.appendChild(logoImg(t.abbr, "hero-logo"));
+    const name = el("div", "hero-name");
+    name.appendChild(el("span", "hero-nick", t.nick.toUpperCase()));
+    name.appendChild(el("span", "hero-rec", record(t.teamId) || t.abbr));
+    block.appendChild(name);
+    face.appendChild(block);
+    if (side === "away") face.appendChild(el("div", "hero-vs", "AT"));
+  }
+  hero.appendChild(face);
+  const meta = el("div", "hero-meta");
+  const status = g.forced === "forceWin" ? `FORCE WIN · ${team(g.forcedWinnerTeamId).abbr}`
+    : g.forced === "fairSim" ? "FAIR SIM"
+    : g.played ? `FINAL · ${away.abbr} ${g.awayScore} — ${home.abbr} ${g.homeScore}`
+    : `${away.abbr} at ${home.abbr} · not played yet`;
+  meta.appendChild(el("span", "hero-status", status));
+  if (g.channelUrl) {
+    const cta = el("a", "hero-cta", "Game channel →");
+    cta.href = g.channelUrl;
+    cta.target = "_blank";
+    cta.rel = "noopener";
+    meta.appendChild(cta);
+  }
+  hero.appendChild(meta);
+  view.appendChild(hero);
+
+  // Context: the standings side of the matchup, the same rows the game card's panel opens with.
+  const sA = (DATA.standings || []).find((s) => s.teamId === g.awayTeamId);
+  const sB = (DATA.standings || []).find((s) => s.teamId === g.homeTeamId);
+  const rA = (DATA.rankings || []).find((r) => r.teamId === g.awayTeamId);
+  const rB = (DATA.rankings || []).find((r) => r.teamId === g.homeTeamId);
+  const streak = (s) => (!s || !s.streak ? "—" : (s.streak > 0 ? "W" : "L") + Math.abs(s.streak));
+  const tapeHead = () => {
+    const r = el("div", "tape-row tape-head");
+    for (const [t, side] of sides) {
+      const cell = el("div", "tape-team " + side);
+      cell.appendChild(logoImg(t.abbr, "hist-logo"));
+      cell.appendChild(el("span", null, t.abbr));
+      r.appendChild(cell);
+      if (side === "away") r.appendChild(el("span", "tape-label", ""));
+    }
+    return r;
+  };
+  const tapeRow = (label, a, b, betterA) => {
+    const r = el("div", "tape-row");
+    r.appendChild(el("span", "tape-val" + (betterA === true ? " better" : ""), a));
+    r.appendChild(el("span", "tape-label", label));
+    r.appendChild(el("span", "tape-val right" + (betterA === false ? " better" : ""), b));
+    return r;
+  };
+  const ctx = el("div", "card game-tape");
+  ctx.appendChild(tapeHead());
+  ctx.appendChild(tapeRow("Record", record(g.awayTeamId) || "—", record(g.homeTeamId) || "—", null));
+  ctx.appendChild(tapeRow("Streak", streak(sA), streak(sB), null));
+  if (rA || rB) ctx.appendChild(tapeRow("Power rank", rA ? "#" + rA.rank : "—", rB ? "#" + rB.rank : "—", rA && rB && rA.rank !== rB.rank ? rA.rank < rB.rank : null));
+  ctx.appendChild(tapeRow("Team OVR", String(away.ovr ?? "—"), String(home.ovr ?? "—"), away.ovr != null && home.ovr != null && away.ovr !== home.ovr ? away.ovr > home.ovr : null));
+  view.appendChild(ctx);
+
+  const M = DATA.matchups && DATA.matchups.games && DATA.matchups.games[String(scheduleId)];
+  if (!M) {
+    view.appendChild(el("div", "empty", "The breakdown for this game isn't in this copy of the league data yet. It arrives with the next sync."));
+    return;
+  }
+  const bySide = { away: M.away, home: M.home };
+
+  // How much season sits behind the numbers.
+  if (M.away.games === 0 && M.home.games === 0) {
+    view.appendChild(el("div", "game-notice", "No box scores this season yet, so there are no season numbers to compare. The unit edges below come from roster ratings."));
+  } else if (M.away.low || M.home.low) {
+    view.appendChild(el("div", "game-notice low", `Low confidence: ${away.abbr} has ${M.away.games} game${M.away.games === 1 ? "" : "s"} of box scores this season and ${home.abbr} has ${M.home.games}. Numbers from fewer than ${DATA.matchups.minGames} games move a lot from week to week.`));
+  }
+
+  // Tendencies, side by side. The better number of the two is marked, by league rank.
+  const metrics = DATA.matchups.metrics || [];
+  const statCell = (def, s) => (s ? fmtMatchupValue(def, s.v) + (s.r != null ? ` · ${matchupRank(s)}` : "") : "—");
+  const tend = el("div", "card game-tape");
+  tend.appendChild(tapeHead());
+  for (const [sideKey, title] of [["off", "Offense"], ["def", "Defense"]]) {
+    const rows = metrics.filter((m) => m.side === sideKey && (M.away.stats[m.key] || M.home.stats[m.key]));
+    if (!rows.length) continue;
+    tend.appendChild(el("div", "tape-section-label", title));
+    for (const def of rows) {
+      const a = M.away.stats[def.key], b = M.home.stats[def.key];
+      const betterA = a && b && a.r != null && b.r != null && a.r !== b.r ? a.r < b.r : null;
+      tend.appendChild(tapeRow(def.label, statCell(def, a), statCell(def, b), betterA));
+    }
+  }
+  view.appendChild(sectionHead("Tendencies", `Season to date · ranks of ${DATA.matchups.teamCount}, 1st is best`));
+  view.appendChild(tend);
+
+  // Strengths and weaknesses: the league's best and worst quarter, per side.
+  const swGrid = el("div", "grid game-sides");
+  for (const [t, side] of sides) {
+    const S = bySide[side];
+    const card = el("div", "card gs-card");
+    const head = el("div", "gs-head");
+    head.appendChild(logoImg(t.abbr, "hist-logo"));
+    head.appendChild(el("span", null, t.nick));
+    card.appendChild(head);
+    for (const [label, keys, none] of [["Strengths", S.strengths, "Nothing in the league's top quarter."], ["Weaknesses", S.weaknesses, "Nothing in the league's bottom quarter."]]) {
+      card.appendChild(el("div", "need-depth-label", label));
+      if (!keys.length) card.appendChild(el("div", "gs-none", none));
+      for (const key of keys) {
+        const def = matchupMetric(key), s = S.stats[key];
+        if (!def || !s) continue;
+        const row = el("div", "gs-row " + (label === "Strengths" ? "gs-good" : "gs-bad"));
+        row.appendChild(el("span", "gs-label", def.label));
+        row.appendChild(el("span", "gs-val", `${fmtMatchupValue(def, s.v)} · ${matchupRank(s)} of ${matchupOf(s)}`));
+        card.appendChild(row);
+      }
+    }
+    swGrid.appendChild(card);
+  }
+  view.appendChild(sectionHead("Strengths & Weaknesses", "League top and bottom quarter"));
+  view.appendChild(swGrid);
+  if ((M.clashes || []).length) {
+    const clash = el("div", "card gs-card game-clashes");
+    for (const c of M.clashes) {
+      const row = el("div", "plan-note");
+      row.appendChild(document.createTextNode(c.text));
+      if (c.low) row.appendChild(el("span", "chip plan-low", "Low confidence"));
+      clash.appendChild(row);
+    }
+    view.appendChild(clash);
+  }
+
+  // Unit edges from roster ratings, each offense against the defense it faces.
+  if ((M.edges || []).length) {
+    view.appendChild(sectionHead("Unit Edges", DATA.matchups.edgePoints ? `Roster ratings · an edge is ${DATA.matchups.edgePoints}+ points` : "Roster ratings"));
+    const edgeDefs = DATA.matchups.edges || [];
+    for (const [off, def] of [[away, home], [home, away]]) {
+      const rows = M.edges.filter((e) => e.offTeamId === off.teamId);
+      if (!rows.length) continue;
+      const card = el("div", "card gs-card edge-card");
+      card.appendChild(el("div", "need-depth-label", `${off.abbr} offense vs ${def.abbr} defense`));
+      for (const e of rows) {
+        const d = edgeDefs.find((x) => x.key === e.key);
+        const row = el("div", "edge-row");
+        const label = el("div", "edge-label", d ? d.label : e.key);
+        if (d) label.appendChild(el("div", "edge-sub", `${off.abbr}: ${d.off} · ${def.abbr}: ${d.def}`));
+        row.appendChild(label);
+        const nums = el("div", "edge-nums");
+        nums.appendChild(document.createTextNode(e.off.toFixed(1)));
+        nums.appendChild(el("span", "edge-vs", "vs"));
+        nums.appendChild(document.createTextNode(e.def.toFixed(1)));
+        row.appendChild(nums);
+        const gap = Math.abs(e.diff).toFixed(1);
+        row.appendChild(el("span", "chip " + (e.edge === "off" ? "edge-up" : e.edge === "def" ? "edge-down" : "edge-even"),
+          e.edge === "off" ? `Edge ${off.abbr} +${gap}` : e.edge === "def" ? `Edge ${def.abbr} +${gap}` : "Even"));
+        card.appendChild(row);
+      }
+      view.appendChild(card);
+    }
+  }
+
+  // The game plan: what works for each side, and what hurts it, against THIS opponent.
+  view.appendChild(sectionHead("Game Plan", "Rule-based, from the numbers above"));
+  const planGrid = el("div", "grid game-sides");
+  for (const [t, side] of sides) {
+    const S = bySide[side];
+    const card = el("div", "card gs-card plan-card");
+    const head = el("div", "gs-head");
+    head.appendChild(logoImg(t.abbr, "hist-logo"));
+    head.appendChild(el("span", null, t.nick));
+    card.appendChild(head);
+    for (const [label, notes, none] of [
+      [`How the ${t.nick} attack`, S.attack, "No rule fired: nothing in the numbers stands out in their favour."],
+      [`What hurts the ${t.nick}`, S.avoid, "No rule fired: nothing in the numbers stands out against them."],
+    ]) {
+      card.appendChild(el("div", "need-depth-label", label));
+      if (!notes.length) card.appendChild(el("div", "gs-none", none));
+      for (const n of notes) {
+        const row = el("div", "plan-note");
+        row.appendChild(document.createTextNode(n.text));
+        if (n.low) row.appendChild(el("span", "chip plan-low", "Low confidence"));
+        card.appendChild(row);
+      }
+    }
+    planGrid.appendChild(card);
+  }
+  view.appendChild(planGrid);
+
+  if (g.played) {
+    view.appendChild(sectionHead("Box Score", "Final"));
+    const box = el("div", "card gs-card");
+    box.appendChild(boxScorePanel(g.scheduleId, DATA.week?.stage ?? null, DATA.week?.week ?? null));
+    view.appendChild(box);
+  }
+
+  view.appendChild(el("div", "news-disclaimer", "Built from this season's box scores, standings and roster ratings. EA's export has no play-by-play, formation, coverage or personnel data, so nothing here is about schemes or play calls. Unit edges use healthy starters, picked by OVR."));
 }
 
 /* ---------- Tabs ---------- */
@@ -617,8 +885,8 @@ function scoreStrip(games) {
   const ordered = games.slice().sort((a, b) => Number(b.played) - Number(a.played));
   for (const g of ordered) {
     const away = team(g.awayTeamId), home = team(g.homeTeamId);
-    const chip = el(g.channelUrl ? "a" : "div", "scorechip");
-    if (g.channelUrl) { chip.href = g.channelUrl; chip.target = "_blank"; chip.rel = "noopener"; }
+    // Each chip opens its game page; the game channel link lives on that page.
+    const chip = gameLink(g.scheduleId, "scorechip");
     const decided = g.played;
     for (const [t, score, won] of [[away, g.awayScore, decided && g.awayScore > g.homeScore], [home, g.homeScore, decided && g.homeScore > g.awayScore]]) {
       const row = el("div", "sc-row" + (decided && !won ? " loser" : ""));
@@ -641,8 +909,8 @@ function scoreStrip(games) {
 
 function heroCard(g) {
   const away = team(g.awayTeamId), home = team(g.homeTeamId);
-  const hero = el(g.channelUrl ? "a" : "div", "hero");
-  if (g.channelUrl) { hero.href = g.channelUrl; hero.target = "_blank"; hero.rel = "noopener"; }
+  // The billboard opens the game's page, which carries the game channel link.
+  const hero = gameLink(g.scheduleId, "hero");
   hero.style.setProperty("--bb-away", railColor(away.abbr));
   hero.style.setProperty("--bb-home", railColor(home.abbr));
   hero.appendChild(logoImg(away.abbr, "wm wm-away"));
@@ -669,7 +937,7 @@ function heroCard(g) {
   const meta = el("div", "hero-meta");
   const decided = g.played;
   meta.appendChild(el("span", "hero-status", decided ? `FINAL · ${away.abbr} ${g.awayScore} — ${home.abbr} ${g.homeScore}` : "THIS WEEK"));
-  if (g.channelUrl) meta.appendChild(el("span", "hero-cta", "Open game channel →"));
+  meta.appendChild(el("span", "hero-cta", "Game page →"));
   hero.appendChild(meta);
   return hero;
 }
@@ -3106,6 +3374,7 @@ let activeTab = "home";
 let lastRenderedTab = null;
 let viewTeamId = null; // non-null = the team detail page is open over the current tab
 let viewDraftHq = false; // the league-wide Draft HQ page
+let viewGameId = null; // non-null = a game page (#game-<scheduleId>) is open over the current tab
 const teamSort = { col: "ovr", dir: -1 }; // roster table sort state, survives re-renders
 const needsView = { sort: "need", open: null }; // draft board: sort mode + which group is expanded
 let scoreWeek = null; // "stage-week" key of a past week being browsed on Home, null = current week
@@ -3113,6 +3382,7 @@ let expandedGame = null; // scheduleId of the game card expanded into its matchu
 
 function openTeam(teamId) {
   viewTeamId = teamId;
+  viewGameId = null;
   needsView.open = null;
   try { history.pushState({ team: teamId }, "", "#team-" + teamId); } catch {}
   render();
@@ -3125,13 +3395,34 @@ function closeTeam(viaHistory) {
 function openDraftHq() {
   viewDraftHq = true;
   viewTeamId = null;
+  viewGameId = null;
   try { history.pushState({ draft: true }, "", "#draft"); } catch {}
   render();
 }
+function openGame(scheduleId) {
+  viewGameId = scheduleId;
+  viewTeamId = null;
+  viewDraftHq = false;
+  try { history.pushState({ game: scheduleId }, "", "#game-" + scheduleId); } catch {}
+  render();
+}
+function closeGame(viaHistory) {
+  viewGameId = null;
+  if (!viaHistory) { try { history.pushState(null, "", location.pathname + location.search); } catch {} }
+  render();
+}
+/* The page a URL fragment names: #team-<id>, #game-<scheduleId> (the link the Discord
+   matchup breakdown posts), or #draft. Read on load and on every back / forward. */
+function routeFromHash() {
+  const hash = location.hash || "";
+  const team = hash.match(/^#team-(\d+)$/);
+  const game = hash.match(/^#game-(\d+)$/);
+  viewTeamId = team ? Number(team[1]) : null;
+  viewGameId = game ? Number(game[1]) : null;
+  viewDraftHq = hash === "#draft";
+}
 window.addEventListener("popstate", () => {
-  const m = (location.hash || "").match(/^#team-(\d+)$/);
-  viewTeamId = m ? Number(m[1]) : null;
-  viewDraftHq = (location.hash || "") === "#draft";
+  routeFromHash();
   render();
 });
 
@@ -3141,13 +3432,14 @@ function render() {
   // a team page's key is "team-<id>" while activeTab stays "teams", so comparing
   // to activeTab made every re-render on a team page (roster sort, draft-board
   // tap) read as a page change and teleport the user to the top.
-  const viewKey = viewDraftHq ? "draft-hq" : viewTeamId != null ? "team-" + viewTeamId : activeTab;
+  const viewKey = viewDraftHq ? "draft-hq" : viewTeamId != null ? "team-" + viewTeamId : viewGameId != null ? "game-" + viewGameId : activeTab;
   const keepScroll = lastRenderedTab === viewKey;
   const y = window.scrollY;
   view.replaceChildren();
   if (!DATA) { view.appendChild(el("div", "loading", "Loading league data…")); return; }
   if (viewDraftHq) { renderDraftHq(view); lastRenderedTab = viewKey; window.scrollTo(0, keepScroll ? y : 0); return; }
   if (viewTeamId != null) { renderTeam(view, viewTeamId); lastRenderedTab = viewKey; window.scrollTo(0, keepScroll ? y : 0); return; }
+  if (viewGameId != null) { renderGame(view, viewGameId); lastRenderedTab = viewKey; window.scrollTo(0, keepScroll ? y : 0); return; }
   RENDERERS[activeTab](view);
   lastRenderedTab = viewKey;
   // Re-rendering the SAME view (the trade builder does this on every tap) keeps the
@@ -3156,11 +3448,12 @@ function render() {
 }
 
 /* Switching tabs, from the tab bar or from a link inside a page (the home wire's "All
-   transactions →"). Either way an open team page or Draft HQ closes, the way the bar
+   transactions →"). Either way an open team page, game page or Draft HQ closes, the way the bar
    always did. On the narrowest phones the bar scrolls sideways (eleven tabs), so the
    tab switched to is scrolled into view: a link must never land on a tab the bar hides. */
 function showTab(name) {
   viewTeamId = null;
+  viewGameId = null;
   viewDraftHq = false;
   try { history.replaceState(null, "", location.pathname + location.search); } catch {}
   activeTab = name;
@@ -3220,9 +3513,7 @@ async function load() {
   for (const t of DATA.teams || []) teamIndex.set(t.teamId, t);
   applyBranding(DATA.leagueName);
   document.getElementById("week-chip").textContent = DATA.weekLabel || "—";
-  const m = (location.hash || "").match(/^#team-(\d+)$/);
-  if (m) viewTeamId = Number(m[1]);
-  if ((location.hash || "") === "#draft") viewDraftHq = true;
+  routeFromHash();
   render();
 }
 

@@ -1415,3 +1415,69 @@ a.card:active { background: var(--surface-2); }
   /* Sides of a deal next to each other: two or three across, a fourth wraps. */
   .tx-sides { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 }
+
+/* ---------- Game page (#game-<scheduleId>) ----------
+   The front page's billboard for the header, the matchup panel's tale-of-the-tape rows
+   for the side-by-side numbers, and the team page's card and label voice for the rest.
+   Nothing new in the palette: every color is a token or a team color from app.js. */
+.hero.game-hero { margin-top: 0; }
+.hero.game-hero.plain { border-color: var(--edge); }
+.hero.game-hero .hero-team { cursor: pointer; }
+.game-link {
+  color: var(--red); font-weight: 700; font-size: 11px; text-decoration: none; white-space: nowrap;
+}
+.game-link:hover { text-decoration: underline; }
+.matchup-cta.secondary {
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--edge);
+}
+.game-tape { padding: 8px 14px 10px; margin-top: 10px; }
+.game-tape .tape-row { grid-template-columns: minmax(0, 1fr) minmax(84px, auto) minmax(0, 1fr); }
+.game-tape .tape-label { max-width: 128px; }
+.game-tape .tape-val { overflow-wrap: anywhere; }
+.tape-head { padding-bottom: 7px; border-bottom: 1px solid var(--edge); margin-bottom: 2px; }
+.tape-team {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 13px;
+}
+.tape-team.home { flex-direction: row-reverse; }
+.game-notice {
+  margin-top: 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.45;
+  color: var(--text); background: var(--surface-2); border: 1px solid var(--edge); border-radius: var(--radius);
+}
+.game-notice.low { border-left: 3px solid var(--gold); }
+.gs-card { padding: 12px 14px; }
+.view > .gs-card { margin-top: 10px; }
+.gs-head {
+  display: flex; align-items: center; gap: 8px;
+  font-family: "Archivo", sans-serif; font-weight: 800; font-size: 14px;
+}
+.gs-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  padding: 3px 0; font-size: 12.5px;
+}
+.gs-label { min-width: 0; }
+.gs-val { font-family: "Archivo", sans-serif; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gs-good .gs-val { color: var(--up); }
+.gs-bad .gs-val { color: var(--down); }
+.gs-none { font-size: 12px; color: var(--text-faint); font-style: italic; padding: 2px 0; }
+.plan-note { font-size: 12.5px; line-height: 1.45; padding: 4px 0; overflow-wrap: anywhere; }
+.plan-note + .plan-note { border-top: 1px dashed var(--edge); }
+.chip.plan-low { margin-left: 6px; font-size: 9px; padding: 2px 6px; color: var(--gold); border-color: rgba(184,134,11,.35); white-space: nowrap; }
+.edge-card + .edge-card { margin-top: 10px; }
+.edge-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--edge);
+}
+.edge-row:last-child { border-bottom: 0; }
+.edge-label { flex: 1 1 180px; min-width: 0; font-weight: 700; font-size: 13px; }
+.edge-sub { font-size: 10.5px; font-weight: 400; color: var(--text-faint); margin-top: 1px; }
+.edge-nums { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.edge-vs { color: var(--text-faint); font-size: 10px; margin: 0 4px; text-transform: uppercase; letter-spacing: .08em; }
+.chip.edge-up { color: var(--up); border-color: rgba(18,138,77,.35); }
+.chip.edge-down { color: var(--down); border-color: rgba(201,58,42,.35); }
+.game-missing { padding: 18px 16px 4px; }
+.game-missing-title { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 17px; }
+.game-missing-text { margin-top: 6px; font-size: 13px; color: var(--text-dim); line-height: 1.45; }
+@media (min-width: 700px) {
+  .game-sides { grid-template-columns: 1fr 1fr; align-items: start; }
+}
